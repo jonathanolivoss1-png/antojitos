@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin | Antojitos Los Anafres</title>
+  <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="admin.css" />
+  <style>
+    :root {
+      --rojo: #C73E1D;
+      --verde: #2E7D32;
+      --amarillo: #F9A825;
+      --crema: #FFF8E1;
+      --cafe: #4E342E;
+      --naranja: #E65100;
+      --fondo: #fff6eb;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      color: var(--cafe);
+      background:
+        radial-gradient(circle at top, rgba(249,168,37,0.18), transparent 30%),
+        linear-gradient(135deg, #fff8ee 0%, #fff0dd 100%);
+      min-height: 100vh;
+      padding: 1.2rem;
+    }
+
+    h1, h2, h3 {
+      font-family: 'Abril Fatface', cursive;
+      letter-spacing: 0.02em;
+    }
+
+    .admin-shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      gap: 1rem;
+    }
+
+    .topbar,
+    .panel,
+    .login-card,
+    .product-card,
+    .promo-card,
+    .order-card {
+      background: rgba(255,255,255,0.95);
+      border-radius: 24px;
+      border: 1px solid rgba(199,62,29,0.1);
+      box-shadow: 0 14px 34px rgba(78,52,46,0.09);
+    }
+
+    .topbar {
+      padding: 1.2rem 1.35rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .topbar p {
+      color: #7c5e52;
+      line-height: 1.6;
+      max-width: 720px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.7rem;
+      flex-wrap: wrap;
+    }
+
+    .btn,
+    button,
+    select {
+      font: inherit;
+    }
+
+    .btn,
+    .save-btn,
+    .ghost-btn,
+    .danger-btn {
+      border: none;
+      border-radius: 999px;
+      padding: 0.8rem 1rem;
+      font-weight: 900;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    }
+
+    .btn:active,
+    .save-btn:active,
+    .ghost-btn:active,
+    .danger-btn:active,
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .btn,
+    .save-btn {
+      background: var(--rojo);
+      color: white;
+      box-shadow: 0 8px 20px rgba(199,62,29,0.2);
+    }
+
+    .ghost-btn {
+      background: #f5eadf;
+      color: var(--cafe);
+    }
+
+    .danger-btn {
+      background: #fde7df;
+      color: var(--rojo);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 1rem;
+    }
+
+    .panel {
+      padding: 1.2rem;
+      display: grid;
+      gap: 1rem;
+    }
+
+    .panel h2 {
+      color: var(--rojo);
+      font-size: 1.65rem;
+    }
+
+    .panel-copy {
+      color: #7c5e52;
+      line-height: 1.65;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .form-group.full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      font-weight: 800;
+      font-size: 0.94rem;
+      color: var(--cafe);
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid #e5d7ca;
+      border-radius: 14px;
+      padding: 0.8rem 0.95rem;
+      background: #fffdf9;
+      color: var(--cafe);
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .meta-note {
+      padding: 0.85rem 1rem;
+      border-radius: 16px;
+      background: rgba(46,125,50,0.09);
+      color: var(--verde);
+      font-weight: 800;
+      line-height: 1.55;
+    }
+
+    .login-wrap {
+      min-height: calc(100vh - 2.4rem);
+      display: grid;
+      place-items: center;
+    }
+
+    .login-card {
+      width: min(100%, 440px);
+      padding: 1.4rem;
+      display: grid;
+      gap: 1rem;
+    }
+
+    .login-card h1 {
+      color: var(--rojo);
+      font-size: 2rem;
+    }
+
+    .helper {
+      color: #7c5e52;
+      line-height: 1.65;
+    }
+
+    .error {
+      color: var(--rojo);
+      font-weight: 800;
+      min-height: 1.2rem;
+    }
+
+    .list {
+      display: grid;
+      gap: 0.9rem;
+    }
+
+    .product-card,
+    .promo-card,
+    .order-card {
+      padding: 1rem;
+      display: grid;
+      gap: 0.85rem;
+    }
+
+    .product-top,
+    .promo-top,
+    .order-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .product-top h3,
+    .promo-top h3,
+    .order-top h3 {
+      color: var(--rojo);
+      font-size: 1.15rem;
+    }
+
+    .switches {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-weight: 800;
+      color: #6e5043;
+    }
+
+    .switch input {
+      width: auto;
+    }
+
+    .options-editor {
+      display: grid;
+      gap: 0.7rem;
+      padding-top: 0.4rem;
+      border-top: 1px dashed #ead8c8;
+    }
+
+    .option-row {
+      display: grid;
+      grid-template-columns: 1.4fr 0.7fr;
+      gap: 0.7rem;
+    }
+
+    .order-items {
+      display: grid;
+      gap: 0.45rem;
+    }
+
+    .order-items span {
+      display: block;
+      padding: 0.6rem 0.75rem;
+      border-radius: 12px;
+      background: #fff9f0;
+      color: #6d4c41;
+    }
+
+    .order-groups {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .order-group {
+      display: grid;
+      gap: 0.85rem;
+      padding: 1rem;
+      border-radius: 22px;
+      border: 1px dashed rgba(199,62,29,0.16);
+      background: rgba(255, 250, 244, 0.72);
+    }
+
+    .order-group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      padding-bottom: 0.7rem;
+      border-bottom: 1px solid rgba(199,62,29,0.1);
+    }
+
+    .order-group-header h3 {
+      color: var(--rojo);
+      font-size: 1.2rem;
+    }
+
+    .order-group-copy {
+      color: #7c5e52;
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+
+    .order-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      padding: 0.4rem 0.7rem;
+      border-radius: 999px;
+      background: rgba(199,62,29,0.12);
+      color: var(--rojo);
+      font-weight: 900;
+      font-size: 0.8rem;
+    }
+
+    .order-group-list {
+      display: grid;
+      gap: 0.85rem;
+    }
+
+    .order-group.group-preparando {
+      border-color: rgba(249,168,37,0.22);
+      background: rgba(255, 251, 239, 0.92);
+    }
+
+    .order-group.group-preparado {
+      border-color: rgba(46,125,50,0.2);
+      background: rgba(242, 250, 243, 0.92);
+    }
+
+    .order-group.group-entregado {
+      border-color: rgba(46,125,50,0.28);
+      background: rgba(236, 247, 238, 0.98);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      background: rgba(249,168,37,0.18);
+      color: var(--naranja);
+      font-weight: 900;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .footer-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%) translateY(18px);
+      background: rgba(46,125,50,0.96);
+      color: white;
+      padding: 0.8rem 1rem;
+      border-radius: 999px;
+      font-weight: 800;
+      box-shadow: 0 12px 28px rgba(46,125,50,0.22);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.24s ease, transform 0.24s ease;
+      z-index: 50;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 980px) {
+      .grid,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 0.8rem;
+      }
+
+      .topbar,
+      .panel,
+      .product-card,
+      .promo-card,
+      .order-card,
+      .login-card {
+        border-radius: 20px;
+      }
+
+      .option-row {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-actions,
+      .actions {
+        flex-direction: column;
+      }
+
+      .btn,
+      .save-btn,
+      .ghost-btn,
+      .danger-btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrap" id="loginWrap">
+    <div class="login-card">
+      <span class="tag">Admin privado</span>
+      <h1>Panel Antojitos Los Anafres</h1>
+      <p class="helper">Protección básica con contraseña configurable y persistencia en localStorage. La estructura ya queda lista para cambiar este adaptador por una base de datos después.</p>
+      <div class="form-group">
+        <label for="adminPassword">Contraseña</label>
+        <input id="adminPassword" type="password" placeholder="Ingresa la contraseña del panel" />
+      </div>
+      <button class="btn" id="loginBtn" type="button">Entrar al panel</button>
+      <p class="error" id="loginError"></p>
+      <a class="ghost-btn" href="../index.html">Volver al sitio</a>
+    </div>
+  </div>
+
+  <main class="admin-shell hidden" id="adminApp">
+    <section class="topbar">
+      <div>
+        <span class="tag">Administración</span>
+        <h1>Gestiona menú, promos y pedidos</h1>
+        <p>Los cambios que hagas aquí actualizan el sitio principal sin tocar código. Si más adelante agregas backend, solo necesitas reemplazar el adaptador de almacenamiento.</p>
+      </div>
+      <div class="actions">
+        <a class="ghost-btn" href="../index.html">Ver sitio</a>
+        <button class="btn" id="logoutBtn" type="button">Cerrar sesión</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Textos destacados</h2>
+        <p class="panel-copy">Edita los textos del hero y las recomendaciones visibles en la página principal.</p>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label for="heroBadgeInput">Badge principal</label>
+            <input id="heroBadgeInput" type="text" />
+          </div>
+          <div class="form-group full">
+            <label for="heroTitleInput">Título principal</label>
+            <input id="heroTitleInput" type="text" />
+          </div>
+          <div class="form-group full">
+            <label for="heroTextInput">Texto principal</label>
+            <textarea id="heroTextInput"></textarea>
+          </div>
+          <div class="form-group full">
+            <label for="heroRecommendationsInput">Recomendaciones</label>
+            <textarea id="heroRecommendationsInput" placeholder="Una recomendación por línea"></textarea>
+          </div>
+        </div>
+        <div class="footer-actions">
+          <button class="save-btn" id="saveContentBtn" type="button">Guardar textos</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Configuración</h2>
+        <p class="panel-copy">Cambia la contraseña de acceso y conserva el panel listo para migrar a base de datos.</p>
+        <p class="meta-note">Adaptador actual: localStorage. Preparado para sustituirse por llamadas a API o base de datos sin rehacer la interfaz.</p>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label for="newPasswordInput">Nueva contraseña del panel</label>
+            <input id="newPasswordInput" type="text" placeholder="Ejemplo: anafres-admin-2026" />
+          </div>
+        </div>
+        <div class="footer-actions">
+          <button class="save-btn" id="saveConfigBtn" type="button">Guardar configuración</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="product-top">
+        <div>
+          <h2>Promociones</h2>
+          <p class="panel-copy">Activa ofertas, cambia textos y agrega nuevas promociones visibles en el sitio.</p>
+        </div>
+        <button class="btn" id="addPromoBtn" type="button">Nueva promoción</button>
+      </div>
+      <div class="list" id="promoList"></div>
+      <div class="footer-actions">
+        <button class="save-btn" id="savePromosBtn" type="button">Guardar promociones</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Productos</h2>
+      <p class="panel-copy">Edita nombre, descripción, precio, imagen, activación y disponibilidad. Cada producto mantiene sus opciones y estado de inventario.</p>
+      <div class="list" id="productList"></div>
+      <div class="footer-actions">
+        <button class="save-btn" id="saveProductsBtn" type="button">Guardar productos</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="product-top">
+        <div>
+          <h2>Dashboard profesional</h2>
+          <p class="panel-copy">Consulta métricas en tiempo real, administra estados y exporta pedidos en CSV.</p>
+        </div>
+        <div class="dashboard-tools">
+          <input id="dayFilterInput" type="date" aria-label="Seleccionar día" />
+          <button class="ghost-btn" id="exportDayCsvBtn" type="button">Guardar día (CSV)</button>
+          <button class="danger-btn" id="deleteDayBtn" type="button">Eliminar día</button>
+          <button class="btn" id="exportCsvBtn" type="button">Exportar CSV</button>
+        </div>
+      </div>
+
+      <div class="admin-kpis" id="adminKpis">
+        <article class="kpi-card"><span>Total pedidos</span><strong id="kpiTotalPedidos">0</strong></article>
+        <article class="kpi-card"><span>Pendientes</span><strong id="kpiPendientes">0</strong></article>
+        <article class="kpi-card"><span>Entregados</span><strong id="kpiEntregados">0</strong></article>
+        <article class="kpi-card"><span>Ventas del día</span><strong id="kpiVentasDia">$0</strong></article>
+        <article class="kpi-card"><span>Ventas del mes</span><strong id="kpiVentasMes">$0</strong></article>
+        <article class="kpi-card"><span>Total vendido</span><strong id="kpiTotalVendido">$0</strong></article>
+        <article class="kpi-card"><span>Promedio por pedido</span><strong id="kpiPromedio">$0</strong></article>
+        <article class="kpi-card"><span>Producto más vendido</span><strong id="kpiProductoTop">Sin datos</strong></article>
+      </div>
+
+      <div class="admin-orders-table-wrap">
+        <table class="admin-orders-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cliente</th>
+              <th>Teléfono</th>
+              <th>Dirección</th>
+              <th>Entrega</th>
+              <th>Productos</th>
+              <th>Total</th>
+              <th>Estado</th>
+              <th>Fecha</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="adminOrdersTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="toast" id="adminToast"></div>
+
+  <div class="admin-modal" id="orderDetailModal" aria-hidden="true">
+    <div class="admin-modal-box">
+      <h3>Detalle del pedido</h3>
+      <div class="admin-modal-body" id="orderDetailContent"></div>
+      <div class="footer-actions">
+        <button class="ghost-btn" id="closeDetailModal" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-modal" id="orderStatusModal" aria-hidden="true">
+    <div class="admin-modal-box">
+      <h3>Editar estado del pedido</h3>
+      <input type="hidden" id="statusOrderId" />
+      <div class="form-group">
+        <label for="statusSelect">Estado</label>
+        <select id="statusSelect">
+          <option value="Pendiente">Pendiente</option>
+          <option value="Confirmado">Confirmado</option>
+          <option value="Preparando">Preparando</option>
+          <option value="En camino">En camino</option>
+          <option value="Entregado">Entregado</option>
+          <option value="Cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div class="footer-actions">
+        <button class="ghost-btn" id="closeStatusModal" type="button">Cancelar</button>
+        <button class="save-btn" id="saveStatusModal" type="button">Guardar estado</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEYS = {
+      appState: 'anafres_app_state_v1',
+      orders: 'anafres_orders_v1',
+      adminAuth: 'anafres_admin_auth_v1'
+    };
+
+    const loginWrap = document.getElementById('loginWrap');
+    const adminApp = document.getElementById('adminApp');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginError = document.getElementById('loginError');
+    const adminPassword = document.getElementById('adminPassword');
+    const adminToast = document.getElementById('adminToast');
+
+    let appState = loadAppState();
+    let orders = loadJSON(STORAGE_KEYS.orders, []);
+
+    const storageAdapter = {
+      loadState: () => loadAppState(),
+      saveState: state => saveJSON(STORAGE_KEYS.appState, state),
+      loadOrders: () => loadJSON(STORAGE_KEYS.orders, []),
+      saveOrders: nextOrders => saveJSON(STORAGE_KEYS.orders, nextOrders)
+    };
+
+    function loadJSON(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (error) {
+        console.warn(`No se pudo leer ${key}.`, error);
+        return fallback;
+      }
+    }
+
+    function saveJSON(key, value) {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    function clone(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function getDefaultAppState() {
+      return {
+        config: {
+          adminPassword: 'anafres2026',
+          restaurantName: 'Antojitos Los Anafres',
+          dbAdapterReady: false
+        },
+        content: {
+          heroBadge: '🍲 Comida tradicional mexicana',
+          heroTitle: 'El sabor tradicional mexicano en cada bocado',
+          heroText: 'Pozole, gorditas, tacos de cecina, pancita, sopes y antojitos preparados con la receta de la casa. Todo listo para disfrutar en casa o venir a recoger.',
+          recommendations: ['🌮 Tacos de cecina', '🫓 Gorditas rellenas', '🍲 Pozole de la casa', '🥤 Bebidas refrescantes']
+        },
+        promotions: [
+          { id: 'promo-pozole', title: 'Fin de semana pozolero', text: 'Activa esta promo desde el panel para destacar tu pozole, pancita o cualquier antojo especial de temporada.', chip: 'Destacado', active: true },
+          { id: 'promo-envio', title: 'Pedidos listos por WhatsApp', text: 'El carrito y el historial guardan tu pedido para repetirlo más rápido y seguir el flujo actual de WhatsApp.', chip: 'Servicio', active: true }
+        ],
+        products: [
+          { id: 'pozole', name: 'Pozole', description: 'Tradicional pozole de maíz acompañado de lechuga, cebolla, limón y tacos dorados.', image: 'https://images.unsplash.com/photo-1613514785940-daed07799d9b?auto=format&fit=crop&w=1200&q=80', category: 'antojitos', tag: 'Especialidad', note: 'Incluye guarniciones tradicionales.', priceLabel: '$80', active: true, available: true, options: [{ id: 'maciza', name: 'Puerco maciza', price: 80 }, { id: 'surtido', name: 'Puerco surtido', price: 80 }, { id: 'pollo', name: 'Pollo', price: 80 }] },
+          { id: 'quesadillas', name: 'Quesadillas', description: 'Elige el relleno que más te guste y si las prefieres fritas o al comal.', image: 'https://images.unsplash.com/photo-1599974579688-8dbdd335c77f?auto=format&fit=crop&w=1200&q=80', category: 'antojitos', tag: 'Personaliza', note: 'Preparación disponible al comal o frita.', priceLabel: '$25', active: true, available: true, choices: ['Frita', 'Comal'], options: [{ id: 'queso', name: 'Queso', price: 25 }, { id: 'pollo', name: 'Pollo', price: 25 }, { id: 'tinga', name: 'Tinga', price: 25 }, { id: 'champinones', name: 'Champiñones', price: 25 }, { id: 'papas-chorizo', name: 'Papas con chorizo', price: 25 }, { id: 'chicharron', name: 'Chicharrón prensado', price: 25 }] },
+          { id: 'pancita', name: 'Pancita', description: 'Servida con el sabor tradicional de la casa.', image: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=80', category: 'antojitos', tag: 'A elegir', note: 'Acompañada de tortillas hechas a mano.', priceLabel: '$100 / $130', active: true, available: true, options: [{ id: 'plato', name: 'Plato', price: 100 }, { id: 'litro', name: 'Litro', price: 130 }] },
+          { id: 'gorditas', name: 'Gorditas', description: 'Elige tu relleno y arma tu antojo favorito con sabor casero.', image: 'https://images.unsplash.com/photo-1625943555419-56a2cb596640?auto=format&fit=crop&w=1200&q=80', category: 'gorditas', tag: 'Favoritas', note: 'Pregunta por frita o al comal al confirmar tu pedido.', priceLabel: '$25 / +$30', active: true, available: true, options: [{ id: 'frijol', name: 'Frijol', price: 25 }, { id: 'chales', name: 'Chales', price: 25 }, { id: 'guisado', name: 'Agregar guisado', price: 30 }] },
+          { id: 'tacos-cecina', name: 'Tacos de Cecina', description: 'Hechos al momento con sabor tradicional y acompañados de lo que más te guste.', image: 'https://images.unsplash.com/photo-1615870216519-2f9fa575fa5c?auto=format&fit=crop&w=1200&q=80', category: 'tacos', tag: 'Más pedidos', note: 'Con papas fritas.', priceLabel: '$25 / $30', active: true, available: true, options: [{ id: 'sencillos', name: 'Sencillos', price: 25 }, { id: 'queso', name: 'Con queso', price: 30 }, { id: 'campechanas', name: 'Campechanas', price: 30 }] },
+          { id: 'sopes', name: 'Sopes', description: 'Listos para pedir con tu opción favorita.', image: 'https://images.unsplash.com/photo-1611250188496-e966043a0629?auto=format&fit=crop&w=1200&q=80', category: 'antojitos', tag: 'Antojo', note: 'Base casera con toppings frescos.', priceLabel: '$20 / $25', active: true, available: true, options: [{ id: 'sencillos', name: 'Sencillos', price: 20 }, { id: 'guisado', name: 'Con guisado', price: 25 }] },
+          { id: 'bebidas', name: 'Bebidas de la casa', description: 'Refrescos, aguas frescas y bebidas frías para acompañar tus antojitos favoritos.', image: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=1200&q=80', category: 'bebidas', tag: 'Refrescante', note: 'Consulta sabores disponibles del día.', priceLabel: '$25', active: true, available: true, options: [{ id: 'aguas-frescas', name: 'Aguas frescas', price: 25 }] }
+        ]
+      };
+    }
+
+    function mergeOptions(defaultOptions, storedOptions) {
+      const map = new Map((storedOptions || []).map(option => [option.id, option]));
+      const merged = (defaultOptions || []).map(option => ({ ...option, ...(map.get(option.id) || {}) }));
+      (storedOptions || []).forEach(option => {
+        if (!merged.some(item => item.id === option.id)) {
+          merged.push(option);
+        }
+      });
+      return merged;
+    }
+
+    function normalizeAppState(rawState) {
+      const defaults = getDefaultAppState();
+      if (!rawState) return defaults;
+
+      const storedProducts = new Map((rawState.products || []).map(product => [product.id, product]));
+      const products = defaults.products.map(product => {
+        const savedProduct = storedProducts.get(product.id) || {};
+        return {
+          ...product,
+          ...savedProduct,
+          options: mergeOptions(product.options || [], savedProduct.options || [])
+        };
+      });
+
+      (rawState.products || []).forEach(product => {
+        if (!products.some(item => item.id === product.id)) {
+          products.push(product);
+        }
+      });
+
+      return {
+        ...defaults,
+        ...rawState,
+        config: { ...defaults.config, ...(rawState.config || {}) },
+        content: { ...defaults.content, ...(rawState.content || {}) },
+        promotions: (rawState.promotions && rawState.promotions.length) ? rawState.promotions : defaults.promotions,
+        products
+      };
+    }
+
+    function loadAppState() {
+      const stored = loadJSON(STORAGE_KEYS.appState, null);
+      const normalized = normalizeAppState(stored);
+      saveJSON(STORAGE_KEYS.appState, normalized);
+      return normalized;
+    }
+
+    function showToast(message) {
+      adminToast.textContent = message;
+      adminToast.classList.add('show');
+      clearTimeout(showToast.timeout);
+      showToast.timeout = setTimeout(() => adminToast.classList.remove('show'), 1800);
+    }
+
+    function syncOrdersFromStorage() {
+      orders = storageAdapter.loadOrders();
+    }
+
+    function renderContentForm() {
+      document.getElementById('heroBadgeInput').value = appState.content.heroBadge || '';
+      document.getElementById('heroTitleInput').value = appState.content.heroTitle || '';
+      document.getElementById('heroTextInput').value = appState.content.heroText || '';
+      document.getElementById('heroRecommendationsInput').value = (appState.content.recommendations || []).join('\n');
+      document.getElementById('newPasswordInput').value = appState.config.adminPassword || '';
+    }
+
+    function renderPromotions() {
+      const promoList = document.getElementById('promoList');
+      promoList.innerHTML = appState.promotions.map((promo, index) => `
+        <article class="promo-card" data-index="${index}">
+          <div class="promo-top">
+            <div>
+              <span class="tag">Promoción</span>
+              <h3>${promo.title || 'Nueva promoción'}</h3>
+            </div>
+            <button class="danger-btn" type="button" data-action="remove-promo" data-index="${index}">Eliminar</button>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Título</label>
+              <input type="text" data-field="title" value="${promo.title || ''}" />
+            </div>
+            <div class="form-group">
+              <label>Etiqueta</label>
+              <input type="text" data-field="chip" value="${promo.chip || ''}" />
+            </div>
+            <div class="form-group full">
+              <label>Texto</label>
+              <textarea data-field="text">${promo.text || ''}</textarea>
+            </div>
+            <label class="switch"><input type="checkbox" data-field="active" ${promo.active ? 'checked' : ''} /> Activa</label>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function renderProducts() {
+      const productList = document.getElementById('productList');
+      productList.innerHTML = appState.products.map(product => `
+        <article class="product-card" data-product-id="${product.id}">
+          <div class="product-top">
+            <div>
+              <span class="tag">${product.category}</span>
+              <h3>${product.name}</h3>
+            </div>
+            <div class="switches">
+              <label class="switch"><input type="checkbox" data-field="active" ${product.active ? 'checked' : ''} /> Activo</label>
+              <label class="switch"><input type="checkbox" data-field="available" ${product.available ? 'checked' : ''} /> Disponible</label>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Nombre</label>
+              <input type="text" data-field="name" value="${product.name}" />
+            </div>
+            <div class="form-group">
+              <label>Categoría</label>
+              <input type="text" data-field="category" value="${product.category}" />
+            </div>
+            <div class="form-group full">
+              <label>Descripción</label>
+              <textarea data-field="description">${product.description}</textarea>
+            </div>
+            <div class="form-group full">
+              <label>Imagen</label>
+              <input type="text" data-field="image" value="${product.image}" />
+            </div>
+            <div class="form-group">
+              <label>Etiqueta</label>
+              <input type="text" data-field="tag" value="${product.tag || ''}" />
+            </div>
+            <div class="form-group">
+              <label>Texto de precio</label>
+              <input type="text" data-field="priceLabel" value="${product.priceLabel || ''}" />
+            </div>
+            <div class="form-group full">
+              <label>Nota</label>
+              <input type="text" data-field="note" value="${product.note || ''}" />
+            </div>
+          </div>
+          <div class="options-editor">
+            <strong>Opciones y precios</strong>
+            ${(product.options || []).map(option => `
+              <div class="option-row" data-option-id="${option.id}">
+                <div class="form-group">
+                  <label>Opción</label>
+                  <input type="text" data-option-field="name" value="${option.name}" />
+                </div>
+                <div class="form-group">
+                  <label>Precio</label>
+                  <input type="number" min="0" step="1" data-option-field="price" value="${option.price}" />
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function renderOrders() {
+      syncOrdersFromStorage();
+      const orderList = document.getElementById('orderList');
+      if (!orderList) return;
+      if (!orders.length) {
+        orderList.innerHTML = '<div class="meta-note">Todavía no hay pedidos guardados desde el sitio principal.</div>';
+        return;
+      }
+
+      const statusConfig = [
+        {
+          key: 'preparando',
+          title: 'En preparación',
+          copy: 'Pedidos que ya están en cocina o en proceso.',
+          className: 'group-preparando'
+        },
+        {
+          key: 'preparado',
+          title: 'Listos para entregar',
+          copy: 'Pedidos terminados y listos para avisar al cliente.',
+          className: 'group-preparado'
+        },
+        {
+          key: 'entregado',
+          title: 'Pedidos entregados',
+          copy: 'Pedidos finalizados y ya entregados al cliente.',
+          className: 'group-entregado'
+        }
+      ];
+
+      const renderOrderCard = order => `
+        <article class="order-card" data-order-id="${order.id}">
+          <div class="order-top">
+            <div>
+              <span class="tag">Pedido</span>
+              <h3>${new Date(order.createdAt).toLocaleString('es-MX')}</h3>
+            </div>
+            <div class="form-group" style="min-width:220px;">
+              <label>Estado</label>
+              <select data-order-field="status">
+                <option value="enviado" ${order.status === 'enviado' ? 'selected' : ''}>Enviado</option>
+                <option value="preparando" ${order.status === 'preparando' ? 'selected' : ''}>Preparando</option>
+                <option value="preparado" ${order.status === 'preparado' ? 'selected' : ''}>Preparado</option>
+                <option value="entregado" ${order.status === 'entregado' ? 'selected' : ''}>Entregado</option>
+              </select>
+            </div>
+          </div>
+          <p class="panel-copy">Entrega: ${order.deliveryType} · Total: $${Number(order.total).toFixed(0)}</p>
+          <div class="order-items">
+            ${order.items.map(item => `<span>${item.qty} x ${item.name}</span>`).join('')}
+          </div>
+        </article>
+      `;
+
+      orderList.innerHTML = `
+        <div class="order-groups">
+          ${statusConfig.map(group => {
+            const groupedOrders = orders.filter(order => {
+              const status = order.status || 'enviado';
+              if (group.key === 'entregado') {
+                return status === 'entregado' || status === 'enviado';
+              }
+              return status === group.key;
+            });
+            return `
+              <section class="order-group ${group.className}">
+                <div class="order-group-header">
+                  <div>
+                    <h3>${group.title}</h3>
+                    <p class="order-group-copy">${group.copy}</p>
+                  </div>
+                  <span class="order-count">${groupedOrders.length}</span>
+                </div>
+                <div class="order-group-list">
+                  ${groupedOrders.length ? groupedOrders.map(renderOrderCard).join('') : '<div class="meta-note">No hay pedidos en este estado.</div>'}
+                </div>
+              </section>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderAll() {
+      appState = storageAdapter.loadState();
+      renderContentForm();
+      renderPromotions();
+      renderProducts();
+      syncContentFromApi();
+      syncPromotionsFromApi();
+      syncProductsFromApi();
+    }
+
+    async function syncContentFromApi() {
+      try {
+        const response = await fetch('/api/admin/content', {
+          credentials: 'include'
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok || !result.content) return;
+
+        appState.content = {
+          ...appState.content,
+          ...result.content
+        };
+
+        persistState();
+        renderContentForm();
+      } catch (error) {
+        console.warn('No se pudieron sincronizar textos destacados desde API.', error);
+      }
+    }
+
+    async function syncPromotionsFromApi() {
+      try {
+        const response = await fetch('/api/admin/promotions', {
+          credentials: 'include'
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) return;
+
+        if (Array.isArray(result.promotions)) {
+          appState.promotions = result.promotions;
+          persistState();
+          renderPromotions();
+        }
+      } catch (error) {
+        console.warn('No se pudieron sincronizar promociones desde API.', error);
+      }
+    }
+
+    async function syncProductsFromApi() {
+      try {
+        const response = await fetch('/api/admin/products', {
+          credentials: 'include'
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) return;
+
+        if (Array.isArray(result.products)) {
+          appState.products = result.products;
+          persistState();
+          renderProducts();
+        }
+      } catch (error) {
+        console.warn('No se pudieron sincronizar productos desde API.', error);
+      }
+    }
+
+    function persistState() {
+      storageAdapter.saveState(appState);
+    }
+
+    async function saveContent() {
+      appState.content.heroBadge = document.getElementById('heroBadgeInput').value.trim();
+      appState.content.heroTitle = document.getElementById('heroTitleInput').value.trim();
+      appState.content.heroText = document.getElementById('heroTextInput').value.trim();
+      appState.content.recommendations = document.getElementById('heroRecommendationsInput').value.split('\n').map(item => item.trim()).filter(Boolean);
+
+      try {
+        const response = await fetch('/api/admin/content', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            content: appState.content
+          })
+        });
+
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok || !result.content) {
+          throw new Error(result?.message || 'No se pudieron guardar los textos destacados');
+        }
+
+        appState.content = {
+          ...appState.content,
+          ...result.content
+        };
+      } catch (error) {
+        showToast(error.message || 'No se pudieron guardar los textos destacados');
+        return;
+      }
+
+      persistState();
+      showToast('Textos destacados guardados');
+    }
+
+    function saveConfig() {
+      const nextPassword = document.getElementById('newPasswordInput').value.trim();
+      if (!nextPassword) {
+        showToast('La contraseña no puede quedar vacía');
+        return;
+      }
+      appState.config.adminPassword = nextPassword;
+      persistState();
+      showToast('Configuración guardada');
+    }
+
+    async function savePromotions() {
+      document.querySelectorAll('#promoList .promo-card').forEach(card => {
+        const index = Number(card.dataset.index);
+        const promo = appState.promotions[index];
+        if (!promo) return;
+        promo.title = card.querySelector('[data-field="title"]').value.trim();
+        promo.chip = card.querySelector('[data-field="chip"]').value.trim();
+        promo.text = card.querySelector('[data-field="text"]').value.trim();
+        promo.active = card.querySelector('[data-field="active"]').checked;
+      });
+
+      try {
+        const response = await fetch('/api/admin/promotions', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            promotions: appState.promotions
+          })
+        });
+
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) {
+          throw new Error(result?.message || 'No se pudieron guardar promociones');
+        }
+
+        appState.promotions = Array.isArray(result.promotions) ? result.promotions : appState.promotions;
+      } catch (error) {
+        showToast(error.message || 'No se pudieron guardar promociones');
+        return;
+      }
+
+      persistState();
+      renderPromotions();
+      showToast('Promociones guardadas');
+    }
+
+    async function saveProducts() {
+      document.querySelectorAll('#productList .product-card').forEach(card => {
+        const productId = card.dataset.productId;
+        const product = appState.products.find(item => item.id === productId);
+        if (!product) return;
+
+        ['name', 'category', 'description', 'image', 'tag', 'priceLabel', 'note'].forEach(field => {
+          const input = card.querySelector(`[data-field="${field}"]`);
+          if (input) {
+            product[field] = input.value.trim();
+          }
+        });
+
+        product.active = card.querySelector('[data-field="active"]').checked;
+        product.available = card.querySelector('[data-field="available"]').checked;
+
+        card.querySelectorAll('.option-row').forEach(row => {
+          const optionId = row.dataset.optionId;
+          const option = (product.options || []).find(item => item.id === optionId);
+          if (!option) return;
+          option.name = row.querySelector('[data-option-field="name"]').value.trim();
+          option.price = Number(row.querySelector('[data-option-field="price"]').value) || 0;
+        });
+      });
+
+      try {
+        const response = await fetch('/api/admin/products', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            products: appState.products
+          })
+        });
+
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) {
+          throw new Error(result?.message || 'No se pudieron guardar productos');
+        }
+
+        appState.products = Array.isArray(result.products) ? result.products : appState.products;
+      } catch (error) {
+        showToast(error.message || 'No se pudieron guardar productos');
+        return;
+      }
+
+      persistState();
+      renderProducts();
+      showToast('Productos guardados');
+    }
+
+    function saveOrders() {
+      const orderList = document.getElementById('orderList');
+      if (!orderList) return;
+
+      document.querySelectorAll('#orderList .order-card').forEach(card => {
+        const order = orders.find(item => item.id === card.dataset.orderId);
+        if (!order) return;
+        order.status = card.querySelector('[data-order-field="status"]').value;
+      });
+      storageAdapter.saveOrders(orders);
+      showToast('Estados de pedidos guardados');
+    }
+
+    const orderListElement = document.getElementById('orderList');
+    if (orderListElement) {
+      orderListElement.addEventListener('change', event => {
+        const select = event.target.closest('[data-order-field="status"]');
+        if (!select) return;
+
+        const card = select.closest('.order-card');
+        const order = orders.find(item => item.id === card?.dataset.orderId);
+        if (!order) return;
+
+        order.status = select.value;
+        storageAdapter.saveOrders(orders);
+        renderOrders();
+        showToast('Pedido movido de sección');
+      });
+    }
+
+    function addPromotion() {
+      appState.promotions.push({
+        id: `promo-${Date.now()}`,
+        title: 'Nueva promoción',
+        text: 'Describe aquí la promoción.',
+        chip: 'Promo',
+        active: true
+      });
+      renderPromotions();
+    }
+
+    function removePromotion(index) {
+      appState.promotions.splice(index, 1);
+      renderPromotions();
+    }
+
+    function requireAuth() {
+      const isAuthed = sessionStorage.getItem(STORAGE_KEYS.adminAuth) === 'true';
+      loginWrap.classList.toggle('hidden', isAuthed);
+      adminApp.classList.toggle('hidden', !isAuthed);
+      if (isAuthed) {
+        renderAll();
+      }
+    }
+
+    window.addEventListener('focus', () => {
+      if (!adminApp.classList.contains('hidden')) {
+        renderOrders();
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !adminApp.classList.contains('hidden')) {
+        renderOrders();
+      }
+    });
+
+    window.addEventListener('storage', event => {
+      if (event.key === STORAGE_KEYS.orders && !adminApp.classList.contains('hidden')) {
+        renderOrders();
+      }
+    });
+
+    loginBtn.addEventListener('click', () => {
+      appState = storageAdapter.loadState();
+      if (adminPassword.value === appState.config.adminPassword) {
+        sessionStorage.setItem(STORAGE_KEYS.adminAuth, 'true');
+        loginError.textContent = '';
+        requireAuth();
+        return;
+      }
+      loginError.textContent = 'Contraseña incorrecta.';
+    });
+
+    adminPassword.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        loginBtn.click();
+      }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      sessionStorage.removeItem(STORAGE_KEYS.adminAuth);
+      requireAuth();
+    });
+
+    document.getElementById('saveContentBtn').addEventListener('click', saveContent);
+    document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+    document.getElementById('savePromosBtn').addEventListener('click', savePromotions);
+    document.getElementById('saveProductsBtn').addEventListener('click', saveProducts);
+    const saveOrdersBtn = document.getElementById('saveOrdersBtn');
+    if (saveOrdersBtn) {
+      saveOrdersBtn.addEventListener('click', saveOrders);
+    }
+    document.getElementById('addPromoBtn').addEventListener('click', addPromotion);
+
+    document.getElementById('promoList').addEventListener('click', event => {
+      const button = event.target.closest('[data-action="remove-promo"]');
+      if (!button) return;
+      removePromotion(Number(button.dataset.index));
+    });
+
+    requireAuth();
+  </script>
+  <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+.admin-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.kpi-card {
+  background: linear-gradient(160deg, #fff8ef 0%, #fff2e3 100%);
+  border: 1px solid rgba(199, 62, 29, 0.14);
+  border-radius: 18px;
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.kpi-card span {
+  color: #7c5e52;
+  font-weight: 800;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-card strong {
+  color: #4E342E;
+  font-size: 1.35rem;
+}
+
+.dashboard-tools {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dashboard-tools input[type="date"] {
+  border: 1px solid #e5d7ca;
+  background: #fffdf9;
+  color: #4E342E;
+  border-radius: 999px;
+  padding: 0.6rem 0.85rem;
+  font-weight: 800;
+}
+
+.admin-orders-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(199, 62, 29, 0.16);
+  border-radius: 18px;
+  background: #fffdfa;
+}
+
+.admin-orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+
+.admin-orders-table th,
+.admin-orders-table td {
+  text-align: left;
+  border-bottom: 1px solid #f3e5d8;
+  padding: 0.68rem 0.72rem;
+  font-size: 0.9rem;
+  vertical-align: top;
+}
+
+.admin-orders-table th {
+  background: #fff1e0;
+  color: #8a4f39;
+  font-weight: 900;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-order-products {
+  display: grid;
+  gap: 0.2rem;
+  color: #6d4c41;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.admin-row-actions button {
+  border: 1px solid rgba(199, 62, 29, 0.15);
+  background: #fff6ec;
+  border-radius: 999px;
+  padding: 0.42rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: #7b4b37;
+  cursor: pointer;
+}
+
+.admin-row-actions button:hover {
+  background: #fee8d8;
+}
+
+.status-chip {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.3rem 0.62rem;
+  font-weight: 900;
+  font-size: 0.75rem;
+  background: #fff2cc;
+  color: #8c5d15;
+}
+
+.status-chip.confirmado,
+.status-chip.preparando,
+.status-chip.en-camino {
+  background: #fff5d9;
+  color: #8a5a00;
+}
+
+.status-chip.entregado {
+  background: #e8f6ea;
+  color: #1d6d32;
+}
+
+.status-chip.cancelado {
+  background: #fde7df;
+  color: #a73319;
+}
+
+.admin-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 23, 15, 0.46);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 100;
+}
+
+.admin-modal.open {
+  display: flex;
+}
+
+.admin-modal-box {
+  width: min(100%, 680px);
+  max-height: 88vh;
+  overflow: auto;
+  background: #fffefb;
+  border-radius: 22px;
+  border: 1px solid rgba(199, 62, 29, 0.18);
+  box-shadow: 0 20px 40px rgba(78, 52, 46, 0.25);
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.admin-modal-box h3 {
+  color: #C73E1D;
+  font-size: 1.55rem;
+}
+
+.admin-modal-body {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.admin-modal-row {
+  border-radius: 14px;
+  padding: 0.6rem 0.7rem;
+  background: #fff5e9;
+}
+
+.admin-modal-row strong {
+  display: block;
+  color: #8f553e;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-modal-row span {
+  color: #4E342E;
+  line-height: 1.5;
+}
+
+.undo-banner {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(34, 39, 52, 0.96);
+  color: #fff;
+  border-radius: 14px;
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.3);
+}
+
+.undo-banner-btn {
+  border: none;
+  border-radius: 999px;
+  background: #fff0dd;
+  color: #7b4b37;
+  font-weight: 900;
+  cursor: pointer;
+  padding: 0.45rem 0.8rem;
+}
+
+.undo-banner-btn:hover {
+  background: #ffe3c3;
+}
+
+@media (max-width: 1100px) {
+  .admin-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-tools {
+    width: 100%;
+  }
+
+  .dashboard-tools input[type="date"],
+  .dashboard-tools button {
+    width: 100%;
+  }
+
+  .undo-banner {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    justify-content: space-between;
+  }
+}
