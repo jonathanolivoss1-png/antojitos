@@ -569,10 +569,25 @@
   }
 
   function parseMoneyFromText(text) {
-    const normalized = String(text || '')
-      .replace(/[^\d.,-]/g, '')
-      .replace(/\.(?=\d{3}(\D|$))/g, '')
-      .replace(',', '.');
+    const cleaned = String(text || '').replace(/[^\d.,-]/g, '');
+    if (!cleaned) return 0;
+
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+
+    let normalized = cleaned;
+    if (lastComma >= 0 && lastDot >= 0) {
+      if (lastComma > lastDot) {
+        normalized = cleaned.replace(/\./g, '').replace(',', '.');
+      } else {
+        normalized = cleaned.replace(/,/g, '');
+      }
+    } else if (lastComma >= 0) {
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = cleaned.replace(/,/g, '');
+    }
+
     const value = Number(normalized);
     return Number.isFinite(value) ? value : 0;
   }
