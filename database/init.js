@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const db = require('./db');
 
 const CONFIG_KEYS = {
@@ -201,6 +201,34 @@ function initDatabase() {
       fecha TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS calculadora_calculos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fecha TEXT NOT NULL,
+      origen TEXT NOT NULL DEFAULT 'manual',
+      cantidad_disponible REAL NOT NULL DEFAULT 0,
+      tipo_cantidad TEXT NOT NULL DEFAULT 'bruta',
+      cantidad_productos INTEGER NOT NULL DEFAULT 0,
+      costo_total REAL NOT NULL DEFAULT 0,
+      venta_total REAL NOT NULL DEFAULT 0,
+      ganancia_estimada REAL NOT NULL DEFAULT 0,
+      margen_ganancia REAL NOT NULL DEFAULT 0,
+      saldo_restante REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS calculadora_productos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      calculo_id INTEGER NOT NULL,
+      nombre TEXT NOT NULL,
+      cantidad REAL NOT NULL DEFAULT 0,
+      costo_unitario REAL NOT NULL DEFAULT 0,
+      precio_venta_unitario REAL NOT NULL DEFAULT 0,
+      costo_total REAL NOT NULL DEFAULT 0,
+      venta_total REAL NOT NULL DEFAULT 0,
+      ganancia_estimada REAL NOT NULL DEFAULT 0,
+      margen_ganancia REAL NOT NULL DEFAULT 0,
+      FOREIGN KEY (calculo_id) REFERENCES calculadora_calculos(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos (estado);
     CREATE INDEX IF NOT EXISTS idx_pedidos_fecha ON pedidos (fecha);
   `);
@@ -214,13 +242,16 @@ function initDatabase() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_token ON pedidos (clienteToken);');
 
   const adminUser = 'admin';
-  const adminPassword = '123456';
+  const adminPassword = process.env.ADMIN_PASSWORD || process.env.ADMIN_PASS || '123456';
+  const hash = bcrypt.hashSync(adminPassword, 10);
 
-  const existing = db.prepare('SELECT id FROM usuarios WHERE usuario = ?').get(adminUser);
+  const existing = db.prepare('SELECT id, password FROM usuarios WHERE usuario = ?').get(adminUser);
   if (!existing) {
-    const hash = bcrypt.hashSync(adminPassword, 10);
     db.prepare('INSERT INTO usuarios (usuario, password) VALUES (?, ?)').run(adminUser, hash);
     console.log('Usuario admin inicial creado.');
+  } else if (existing.password !== hash) {
+    db.prepare('UPDATE usuarios SET password = ? WHERE usuario = ?').run(hash, adminUser);
+    console.log('Contraseña de usuario admin actualizada.');
   }
 
   seedGlobalConfigIfMissing();

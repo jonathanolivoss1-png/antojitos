@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
 
@@ -6,6 +7,7 @@ const router = express.Router();
 const PROMOS_KEY = 'site_promotions_v1';
 const PRODUCTS_KEY = 'site_products_v1';
 const CONTENT_KEY = 'site_content_v1';
+const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
 
 function parseProductos(raw) {
   try {
@@ -15,9 +17,32 @@ function parseProductos(raw) {
   }
 }
 
+function sanitizeNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
 function sanitizeText(value, maxLength = 220) {
   if (typeof value !== 'string') return '';
   return value.replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, maxLength);
+}
+
+function readConfigJson(key) {
+  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(key);
+  if (!row?.valor) return null;
+  try {
+    return JSON.parse(row.valor);
+  } catch {
+    return null;
+  }
+}
+
+function writeConfigJson(key, value) {
+  db.prepare(`
+    INSERT INTO configuracion (clave, valor)
+    VALUES (?, ?)
+    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
+  `).run(key, JSON.stringify(value));
 }
 
 function normalizePromotions(value) {
@@ -168,6 +193,352 @@ function writeContent(content) {
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
   `).run(CONTENT_KEY, JSON.stringify(content));
 }
+
+function normalizeCalculatorDraft(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const products = Array.isArray(source.products)
+    ? source.products
+        .map((item, index) => {
+          const id = sanitizeText(item?.id || `draft-item-${index + 1}`, 100);
+          const name = sanitizeText(item?.name || '', 120);
+          const qty = Math.max(0, sanitizeNumber(item?.qty));
+          const price = Math.max(0, sanitizeNumber(item?.price));
+          if (!id) return null;
+          return { id, name, qty, price };
+        })
+        .filter(Boolean)
+    : [];
+
+  return {
+    products,
+    manualIncomeValue: Math.max(0, sanitizeNumber(source.manualIncomeValue || 0)),
+    useDashboardRevenue: Boolean(source.useDashboardRevenue),
+    updatedAt: Math.max(0, sanitizeNumber(source.updatedAt || 0))
+  };
+}
+
+function hasMeaningfulDraftProducts(draft) {
+  const products = Array.isArray(draft?.products) ? draft.products : [];
+  return products.some(item => {
+    const name = String(item?.name || '').trim();
+    const price = Number(item?.price || 0);
+    return Boolean(name) || (Number.isFinite(price) && price > 0);
+  });
+}
+
+router.put('/password', requireAuth, (req, res) => {
+  try {
+    const nextPassword = sanitizeText(req.body?.password || '', 80);
+    if (!nextPassword) {
+      return res.status(400).json({ ok: false, message: 'La contraseña no puede quedar vacía' });
+    }
+
+    const hash = bcrypt.hashSync(nextPassword, 10);
+    const result = db.prepare('UPDATE usuarios SET password = ? WHERE usuario = ?').run(hash, 'admin');
+
+    if (!result.changes) {
+      return res.status(404).json({ ok: false, message: 'No se encontró el usuario administrador' });
+    }
+
+    return res.json({ ok: true, message: 'Contraseña actualizada' });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo actualizar la contraseña' });
+  }
+});
+
+function normalizeCalculatorProducts(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map(item => {
+      const name = sanitizeText(item?.name || '', 120);
+      const qty = sanitizeNumber(item?.qty);
+      const costUnit = sanitizeNumber(item?.costUnit);
+      const priceUnit = sanitizeNumber(item?.priceUnit);
+      const costTotal = qty * costUnit;
+      const hasSalePrice = Number.isFinite(priceUnit) && priceUnit >= 0 && String(item?.priceUnit ?? '').trim() !== '';
+      const saleTotal = hasSalePrice ? qty * priceUnit : 0;
+      const gain = saleTotal - costTotal;
+      const margin = saleTotal > 0 ? (gain / saleTotal) * 100 : 0;
+
+      if (!name || qty <= 0) return null;
+
+      return {
+        name,
+        qty,
+        costUnit: Math.round(costUnit * 100) / 100,
+        priceUnit: Math.round(priceUnit * 100) / 100,
+        costTotal: Math.round(costTotal * 100) / 100,
+        saleTotal: Math.round(saleTotal * 100) / 100,
+        gananciaEstimada: Math.round(gain * 100) / 100,
+        margenGanancia: Math.round(margin * 100) / 100
+      };
+    })
+    .filter(Boolean);
+}
+
+function calculateCalculatorTotals(productos) {
+  const costoTotal = productos.reduce((sum, item) => sum + Number(item.costTotal || 0), 0);
+  const ventaTotal = productos.reduce((sum, item) => sum + Number(item.saleTotal || 0), 0);
+  const gananciaEstimada = ventaTotal - costoTotal;
+  const margenGanancia = ventaTotal > 0 ? (gananciaEstimada / ventaTotal) * 100 : 0;
+
+  return {
+    costoTotal: Math.round(costoTotal * 100) / 100,
+    ventaTotal: Math.round(ventaTotal * 100) / 100,
+    gananciaEstimada: Math.round(gananciaEstimada * 100) / 100,
+    margenGanancia: Math.round(margenGanancia * 100) / 100
+  };
+}
+
+function normalizeCalculatorPayload(body) {
+  const productos = normalizeCalculatorProducts(body?.productos || []);
+  const totals = calculateCalculatorTotals(productos);
+  const origen = ['manual', 'dashboard', 'sin_cantidad_inicial'].includes(sanitizeText(body?.origen || 'manual', 40))
+    ? sanitizeText(body?.origen || 'manual', 40)
+    : 'manual';
+  const tipoCantidad = ['bruta', 'neta'].includes(sanitizeText(body?.tipoCantidad || 'bruta', 20))
+    ? sanitizeText(body?.tipoCantidad || 'bruta', 20)
+    : 'bruta';
+  const cantidadDisponible = sanitizeNumber(body?.cantidadDisponible || 0);
+
+  let saldoRestante = 0;
+  if (origen !== 'sin_cantidad_inicial') {
+    saldoRestante = tipoCantidad === 'neta' ? cantidadDisponible : cantidadDisponible - totals.costoTotal;
+  }
+
+  return {
+    origen,
+    cantidadDisponible: Math.round(cantidadDisponible * 100) / 100,
+    tipoCantidad,
+    cantidadProductos: productos.length,
+    costoTotal: totals.costoTotal,
+    ventaTotal: totals.ventaTotal,
+    gananciaEstimada: totals.gananciaEstimada,
+    margenGanancia: totals.margenGanancia,
+    saldoRestante: Math.round(saldoRestante * 100) / 100,
+    productos
+  };
+}
+
+function mapCalculatorRow(row) {
+  const productos = db.prepare('SELECT * FROM calculadora_productos WHERE calculo_id = ? ORDER BY id').all(row.id);
+  return {
+    id: row.id,
+    fecha: row.fecha,
+    origen: row.origen,
+    cantidadDisponible: Number(row.cantidad_disponible || 0),
+    tipoCantidad: row.tipo_cantidad,
+    cantidadProductos: Number(row.cantidad_productos || 0),
+    costoTotal: Number(row.costo_total || 0),
+    ventaTotal: Number(row.venta_total || 0),
+    gananciaEstimada: Number(row.ganancia_estimada || 0),
+    margenGanancia: Number(row.margen_ganancia || 0),
+    saldoRestante: Number(row.saldo_restante || 0),
+    productos: productos.map(item => ({
+      id: item.id,
+      nombre: item.nombre,
+      cantidad: Number(item.cantidad || 0),
+      costoUnitario: Number(item.costo_unitario || 0),
+      precioVentaUnitario: Number(item.precio_venta_unitario || 0),
+      costoTotal: Number(item.costo_total || 0),
+      ventaTotal: Number(item.venta_total || 0),
+      gananciaEstimada: Number(item.ganancia_estimada || 0),
+      margenGanancia: Number(item.margen_ganancia || 0)
+    }))
+  };
+}
+
+router.post('/calculadora', requireAuth, (req, res) => {
+  try {
+    const payload = normalizeCalculatorPayload(req.body || {});
+    const insertCalculation = db.prepare(`
+      INSERT INTO calculadora_calculos (
+        fecha, origen, cantidad_disponible, tipo_cantidad, cantidad_productos, costo_total, venta_total, ganancia_estimada, margen_ganancia, saldo_restante
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertProduct = db.prepare(`
+      INSERT INTO calculadora_productos (
+        calculo_id, nombre, cantidad, costo_unitario, precio_venta_unitario, costo_total, venta_total, ganancia_estimada, margen_ganancia
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const tx = db.transaction(() => {
+      const result = insertCalculation.run(
+        new Date().toISOString(),
+        payload.origen,
+        payload.cantidadDisponible,
+        payload.tipoCantidad,
+        payload.cantidadProductos,
+        payload.costoTotal,
+        payload.ventaTotal,
+        payload.gananciaEstimada,
+        payload.margenGanancia,
+        payload.saldoRestante
+      );
+      const calculoId = result.lastInsertRowid;
+      payload.productos.forEach(producto => {
+        insertProduct.run(
+          calculoId,
+          producto.name,
+          producto.qty,
+          producto.costUnit,
+          producto.priceUnit,
+          producto.costTotal,
+          producto.saleTotal,
+          producto.gananciaEstimada,
+          producto.margenGanancia
+        );
+      });
+      return calculoId;
+    });
+
+    const calculoId = tx();
+    const row = db.prepare('SELECT * FROM calculadora_calculos WHERE id = ?').get(calculoId);
+    return res.status(201).json({ ok: true, calculo: mapCalculatorRow(row) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo guardar el cálculo' });
+  }
+});
+
+router.get('/calculadora', requireAuth, (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM calculadora_calculos ORDER BY id DESC').all();
+    return res.json({ ok: true, calculos: rows.map(mapCalculatorRow) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudieron cargar los cálculos' });
+  }
+});
+
+router.get('/calculadora/draft', requireAuth, (req, res) => {
+  try {
+    const parsed = readConfigJson(CALCULATOR_DRAFT_KEY);
+    if (!parsed) {
+      return res.json({ ok: true, draft: null });
+    }
+
+    return res.json({ ok: true, draft: normalizeCalculatorDraft(parsed) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo cargar el borrador de calculadora' });
+  }
+});
+
+router.put('/calculadora/draft', requireAuth, (req, res) => {
+  try {
+    const incomingDraft = normalizeCalculatorDraft(req.body?.draft ?? req.body ?? {});
+    const currentDraft = normalizeCalculatorDraft(readConfigJson(CALCULATOR_DRAFT_KEY) || {});
+    const allowEmptyOverride = Boolean(req.body?.allowEmptyOverride);
+
+    const incomingHasMeaningful = hasMeaningfulDraftProducts(incomingDraft);
+    const currentHasMeaningful = hasMeaningfulDraftProducts(currentDraft);
+
+    if (!allowEmptyOverride && !incomingHasMeaningful && currentHasMeaningful) {
+      return res.json({ ok: true, draft: currentDraft, ignoredEmptyDraft: true });
+    }
+
+    if (Number(incomingDraft.updatedAt || 0) < Number(currentDraft.updatedAt || 0)) {
+      return res.json({ ok: true, draft: currentDraft, ignoredStaleDraft: true });
+    }
+
+    writeConfigJson(CALCULATOR_DRAFT_KEY, incomingDraft);
+    return res.json({ ok: true, draft: incomingDraft });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo guardar el borrador de calculadora' });
+  }
+});
+
+router.get('/calculadora/:id', requireAuth, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ ok: false, message: 'ID inválido' });
+    }
+
+    const row = db.prepare('SELECT * FROM calculadora_calculos WHERE id = ?').get(id);
+    if (!row) {
+      return res.status(404).json({ ok: false, message: 'Cálculo no encontrado' });
+    }
+
+    return res.json({ ok: true, calculo: mapCalculatorRow(row) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo consultar el cálculo' });
+  }
+});
+
+router.put('/calculadora/:id', requireAuth, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ ok: false, message: 'ID inválido' });
+    }
+
+    const payload = normalizeCalculatorPayload(req.body || {});
+    const updateCalculation = db.prepare(`
+      UPDATE calculadora_calculos
+      SET origen = ?, cantidad_disponible = ?, tipo_cantidad = ?, cantidad_productos = ?, costo_total = ?, venta_total = ?, ganancia_estimada = ?, margen_ganancia = ?, saldo_restante = ?
+      WHERE id = ?
+    `);
+    const deleteProducts = db.prepare('DELETE FROM calculadora_productos WHERE calculo_id = ?');
+    const insertProduct = db.prepare(`
+      INSERT INTO calculadora_productos (
+        calculo_id, nombre, cantidad, costo_unitario, precio_venta_unitario, costo_total, venta_total, ganancia_estimada, margen_ganancia
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const tx = db.transaction(() => {
+      updateCalculation.run(
+        payload.origen,
+        payload.cantidadDisponible,
+        payload.tipoCantidad,
+        payload.cantidadProductos,
+        payload.costoTotal,
+        payload.ventaTotal,
+        payload.gananciaEstimada,
+        payload.margenGanancia,
+        payload.saldoRestante,
+        id
+      );
+      deleteProducts.run(id);
+      payload.productos.forEach(producto => {
+        insertProduct.run(
+          id,
+          producto.name,
+          producto.qty,
+          producto.costUnit,
+          producto.priceUnit,
+          producto.costTotal,
+          producto.saleTotal,
+          producto.gananciaEstimada,
+          producto.margenGanancia
+        );
+      });
+    });
+
+    tx();
+    const row = db.prepare('SELECT * FROM calculadora_calculos WHERE id = ?').get(id);
+    return res.json({ ok: true, calculo: mapCalculatorRow(row) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo actualizar el cálculo' });
+  }
+});
+
+router.delete('/calculadora/:id', requireAuth, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ ok: false, message: 'ID inválido' });
+    }
+
+    const result = db.prepare('DELETE FROM calculadora_calculos WHERE id = ?').run(id);
+    if (!result.changes) {
+      return res.status(404).json({ ok: false, message: 'Cálculo no encontrado' });
+    }
+
+    return res.json({ ok: true, deletedId: id });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo eliminar el cálculo' });
+  }
+});
 
 router.get('/public-promotions', (req, res) => {
   try {

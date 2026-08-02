@@ -2056,7 +2056,8 @@
       orders: 'anafres_orders_v1',
       preparedSeen: 'anafres_prepared_seen_v1',
       pendingOrder: 'anafres_pending_order_v1',
-      clientToken: 'anafres_client_token_v1'
+      clientToken: 'anafres_client_token_v1',
+      orderRefresh: 'anafres_order_refresh_v1'
     };
 
     const menuBtn = document.getElementById('menuBtn');
@@ -2407,6 +2408,14 @@
 
     function saveAppState() {
       saveJSON(STORAGE_KEYS.appState, appState);
+    }
+
+    function refreshFromServerAndStorage() {
+      appState = loadAppState();
+      renderStaticContent();
+      renderPromotions();
+      renderMenu();
+      syncGlobalSettingsFromApi({ includeProducts: true });
     }
 
     function toggleMenu() {
@@ -2816,14 +2825,15 @@
       const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
       const subtotal = total;
       const envio = 0;
+      const safeDeliveryType = String(deliveryType || 'Recoger en establecimiento').trim() || 'Recoger en establecimiento';
       return {
         id: `order-${Date.now()}`,
         createdAt: new Date().toISOString(),
         cliente: name,
         telefono: phone || '',
         direccion: address || '',
-        deliveryType,
-        tipoEntrega: deliveryType,
+        deliveryType: safeDeliveryType,
+        tipoEntrega: safeDeliveryType,
         reference: reference || '',
         subtotal,
         envio,
@@ -2843,25 +2853,38 @@
       };
     }
 
-    async function createOrderInApi(orderData) {
+    function normalizeOrderItems(items) {
+      if (!Array.isArray(items)) return [];
+      return items
+        .map(item => {
+          const qty = Number(item?.qty) || 0;
+          if (!qty) return null;
+          const name = String(item?.name || item?.choice || item?.optionLabel || 'Producto').trim();
+          return {
+            key: String(item?.key || ''),
+            name: name || 'Producto',
+            qty,
+            price: Number(item?.price) || 0,
+            image: String(item?.image || ''),
+            productId: String(item?.productId || ''),
+            optionId: String(item?.optionId || ''),
+            choice: String(item?.choice || '')
+          };
+        })
+        .filter(Boolean);
+    }
+
+    function notifyAdminDashboardOrderChange() {
+      localStorage.setItem(STORAGE_KEYS.orderRefresh, `${Date.now()}`);
+    }
+
+    async function postOrderPayload(payload) {
       const response = await fetch('/api/pedidos', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          clienteToken: clientToken,
-          cliente: orderData.cliente,
-          telefono: orderData.telefono,
-          direccion: orderData.direccion,
-          tipoEntrega: orderData.tipoEntrega,
-          productos: orderData.items,
-          subtotal: orderData.subtotal,
-          envio: orderData.envio,
-          total: orderData.total,
-          estado: 'Pendiente',
-          fecha: orderData.createdAt
-        })
+        body: JSON.stringify(payload)
       });
 
       const result = await response.json().catch(() => null);
@@ -2870,6 +2893,45 @@
       }
 
       return result.pedido;
+    }
+
+    async function createOrderInApi(orderData) {
+      const safeItems = normalizeOrderItems(orderData.items);
+      const safeDeliveryType = String(orderData.tipoEntrega || orderData.deliveryType || 'Recoger en establecimiento').trim() || 'Recoger en establecimiento';
+
+      const payload = {
+        clienteToken: clientToken,
+        clientToken,
+        cliente: String(orderData.cliente || '').trim(),
+        name: String(orderData.cliente || '').trim(),
+        telefono: String(orderData.telefono || '').trim(),
+        phone: String(orderData.telefono || '').trim(),
+        direccion: String(orderData.direccion || '').trim(),
+        address: String(orderData.direccion || '').trim(),
+        tipoEntrega: safeDeliveryType,
+        deliveryType: safeDeliveryType,
+        productos: safeItems,
+        items: safeItems,
+        subtotal: Number(orderData.subtotal) || 0,
+        envio: Number(orderData.envio) || 0,
+        total: Number(orderData.total) || 0,
+        estado: 'Pendiente',
+        fecha: orderData.createdAt
+      };
+
+      try {
+        return await postOrderPayload(payload);
+      } catch {
+        // Retry with a minimal payload shape as fallback for inconsistent client state.
+        return postOrderPayload({
+          cliente: payload.cliente,
+          tipoEntrega: payload.tipoEntrega,
+          productos: payload.productos,
+          total: payload.total,
+          subtotal: payload.subtotal,
+          envio: payload.envio
+        });
+      }
     }
 
     function recordOrder(order) {
@@ -2953,6 +3015,7 @@
           status: savedOrder.estado || 'Pendiente',
           items: Array.isArray(savedOrder.productos) ? savedOrder.productos : orderData.items
         });
+        notifyAdminDashboardOrderChange();
         syncOrderHistoryFromApi();
 
         cart = [];
@@ -3262,12 +3325,25 @@
       });
     }
 
-    window.addEventListener('focus', syncOrderHistoryFromApi);
+    window.addEventListener('focus', () => {
+      syncOrderHistoryFromApi();
+      refreshFromServerAndStorage();
+    });
+
+    window.addEventListener('pageshow', () => {
+      refreshFromServerAndStorage();
+    });
+
+    window.addEventListener('storage', event => {
+      if (!event.key || event.key === STORAGE_KEYS.appState) {
+        refreshFromServerAndStorage();
+      }
+    });
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         syncOrderHistoryFromApi();
-        syncGlobalSettingsFromApi({ includeProducts: false });
+        refreshFromServerAndStorage();
       }
     });
 

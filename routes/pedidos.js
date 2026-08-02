@@ -43,16 +43,21 @@ function normalizeProductos(productos) {
   if (Array.isArray(productos)) {
     return productos
       .map(item => {
-        const qty = Number(item?.qty) || 0;
-        const name = sanitizeText(item?.name || '', 120);
-        if (!qty || !name) return null;
+        const qty = Number(item?.qty ?? item?.cantidad) || 0;
+        if (!qty) return null;
+
+        const name = sanitizeText(
+          item?.name || item?.nombre || item?.choice || item?.optionLabel || 'Producto',
+          120
+        );
+
         return {
           qty,
           name,
-          price: toMoney(item?.price),
+          price: toMoney(item?.price ?? item?.precio),
           productId: sanitizeText(item?.productId || '', 80),
-          optionId: sanitizeText(item?.optionId || '', 80),
-          choice: sanitizeText(item?.choice || '', 80)
+          optionId: sanitizeText(item?.optionId || item?.opcionId || '', 80),
+          choice: sanitizeText(item?.choice || item?.opcion || '', 80)
         };
       })
       .filter(Boolean);

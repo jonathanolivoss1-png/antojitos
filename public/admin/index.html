@@ -381,6 +381,118 @@
       flex-wrap: wrap;
     }
 
+    .calculator-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 1rem;
+    }
+
+    .calculator-toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.85rem;
+      flex-wrap: wrap;
+      align-items: end;
+      margin-bottom: 0.8rem;
+      padding: 0.95rem 1rem;
+      border-radius: 18px;
+      background: #fff9f1;
+      border: 1px solid rgba(199,62,29,0.12);
+    }
+
+    .calculator-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: var(--cafe);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .calculator-toggle input {
+      width: auto;
+      accent-color: var(--rojo);
+    }
+
+    .disabled-input {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .calculator-product-row {
+      display: grid;
+      grid-template-columns: 1.35fr 0.7fr 0.85fr 0.85fr auto;
+      gap: 0.6rem;
+      align-items: end;
+      padding: 0.8rem;
+      border-radius: 16px;
+      background: #fffdf9;
+      border: 1px solid rgba(199,62,29,0.1);
+    }
+
+    .calculator-products {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 0.4rem;
+    }
+
+    .calculator-summary {
+      display: grid;
+      gap: 0.7rem;
+    }
+
+    .calculator-summary-card,
+    .calculator-result-card {
+      padding: 0.95rem 1rem;
+      border-radius: 18px;
+      background: #fff9f1;
+      border: 1px solid rgba(199,62,29,0.12);
+      display: grid;
+      gap: 0.2rem;
+    }
+
+    .calculator-summary-card span,
+    .calculator-result-card span {
+      color: #7c5e52;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .calculator-summary-card strong,
+    .calculator-result-card strong {
+      color: var(--rojo);
+      font-size: 1.1rem;
+    }
+
+    .calculator-result-card {
+      background: linear-gradient(135deg, rgba(255,248,225,0.95), rgba(255,240,221,0.95));
+    }
+
+    .calculator-result-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      padding: 0.4rem 0.7rem;
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 0.84rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: rgba(46,125,50,0.12);
+      color: var(--verde);
+    }
+
+    .calculator-result-badge.deficit {
+      background: rgba(199,62,29,0.12);
+      color: var(--rojo);
+    }
+
+    .calculator-result-badge.neutral {
+      background: rgba(249,168,37,0.16);
+      color: var(--naranja);
+    }
+
     .toast {
       position: fixed;
       left: 50%;
@@ -409,7 +521,14 @@
 
     @media (max-width: 980px) {
       .grid,
-      .form-grid {
+      .form-grid,
+      .calculator-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .calculator-product-row {
         grid-template-columns: 1fr;
       }
     }
@@ -587,6 +706,57 @@
       </div>
     </section>
 
+    <section class="panel" id="calculatorSection">
+      <div class="product-top">
+        <div>
+          <h2>Calculadora de gastos y ganancias</h2>
+        </div>
+        <div class="actions">
+          <button class="ghost-btn" id="calculatorClearBtn" type="button">Limpiar calculadora</button>
+        </div>
+      </div>
+
+      <div class="calculator-grid">
+        <div>
+          <div class="calculator-toolbar">
+            <label class="calculator-toggle" for="calculatorUseDashboardToggle">
+              <input id="calculatorUseDashboardToggle" type="checkbox" checked />
+              <span>Tomar ganancias del dashboard</span>
+            </label>
+            <div class="form-group">
+              <label for="calculatorIncomeInput">Ganancias</label>
+              <input id="calculatorIncomeInput" type="number" step="0.01" min="0" value="0" />
+            </div>
+          </div>
+
+          <div class="calculator-products" id="calculatorProducts"></div>
+          <div class="footer-actions">
+            <button class="ghost-btn" id="calculatorAddProductBtn" type="button">Agregar producto</button>
+          </div>
+        </div>
+
+        <div class="calculator-summary">
+          <div class="calculator-summary-card">
+            <span>Total gastado en productos</span>
+            <strong id="calculatorExpensesTotal">$0.00 MXN</strong>
+          </div>
+          <div class="calculator-summary-card">
+            <span>Ganancia disponible</span>
+            <strong id="calculatorIncomeTotal">$0.00 MXN</strong>
+          </div>
+          <div class="calculator-summary-card">
+            <span>Resultado final</span>
+            <strong id="calculatorFinalResult">$0.00 MXN</strong>
+          </div>
+          <div class="calculator-result-card">
+            <span>Estado</span>
+            <strong id="calculatorResultState">Ganancia restante</strong>
+            <span id="calculatorResultMessage">Ingresa gastos y ganancias para ver el resultado.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <div class="toast" id="adminToast"></div>
@@ -669,7 +839,7 @@
     function getDefaultAppState() {
       return {
         config: {
-          adminPassword: 'anafres2026',
+          adminPassword: '123456',
           restaurantName: 'Antojitos Los Anafres',
           dbAdapterReady: false
         },
@@ -710,6 +880,15 @@
       const defaults = getDefaultAppState();
       if (!rawState) return defaults;
 
+      const normalizedConfig = {
+        ...defaults.config,
+        ...(rawState.config || {})
+      };
+
+      if (!normalizedConfig.adminPassword || normalizedConfig.adminPassword === 'anafres2026') {
+        normalizedConfig.adminPassword = defaults.config.adminPassword;
+      }
+
       const storedProducts = new Map((rawState.products || []).map(product => [product.id, product]));
       const products = defaults.products.map(product => {
         const savedProduct = storedProducts.get(product.id) || {};
@@ -729,7 +908,7 @@
       return {
         ...defaults,
         ...rawState,
-        config: { ...defaults.config, ...(rawState.config || {}) },
+        config: normalizedConfig,
         content: { ...defaults.content, ...(rawState.content || {}) },
         promotions: (rawState.promotions && rawState.promotions.length) ? rawState.promotions : defaults.promotions,
         products
@@ -1044,15 +1223,34 @@
       showToast('Textos destacados guardados');
     }
 
-    function saveConfig() {
+    async function saveConfig() {
       const nextPassword = document.getElementById('newPasswordInput').value.trim();
       if (!nextPassword) {
         showToast('La contraseña no puede quedar vacía');
         return;
       }
-      appState.config.adminPassword = nextPassword;
-      persistState();
-      showToast('Configuración guardada');
+
+      try {
+        const response = await fetch('/api/admin/password', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({ password: nextPassword })
+        });
+
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) {
+          throw new Error(result?.message || 'No se pudo actualizar la contraseña');
+        }
+
+        appState.config.adminPassword = nextPassword;
+        persistState();
+        showToast('Configuración guardada');
+      } catch (error) {
+        showToast(error.message || 'No se pudo actualizar la contraseña');
+      }
     }
 
     async function savePromotions() {

@@ -19,6 +19,17 @@
   const detailContent = document.getElementById('orderDetailContent');
   const closeDetailModal = document.getElementById('closeDetailModal');
 
+  const calculatorProductsRoot = document.getElementById('calculatorProducts');
+  const calculatorAddProductBtn = document.getElementById('calculatorAddProductBtn');
+  const calculatorClearBtn = document.getElementById('calculatorClearBtn');
+  const calculatorUseDashboardToggle = document.getElementById('calculatorUseDashboardToggle');
+  const calculatorIncomeInput = document.getElementById('calculatorIncomeInput');
+  const calculatorExpensesTotal = document.getElementById('calculatorExpensesTotal');
+  const calculatorIncomeTotal = document.getElementById('calculatorIncomeTotal');
+  const calculatorFinalResult = document.getElementById('calculatorFinalResult');
+  const calculatorResultState = document.getElementById('calculatorResultState');
+  const calculatorResultMessage = document.getElementById('calculatorResultMessage');
+
   const statusModal = document.getElementById('orderStatusModal');
   const statusOrderIdInput = document.getElementById('statusOrderId');
   const statusSelect = document.getElementById('statusSelect');
@@ -26,8 +37,16 @@
   const closeStatusModalBtn = document.getElementById('closeStatusModal');
 
   let currentOrders = [];
+  let calculatorProducts = [];
   let refreshTimer = null;
+  let dashboardRevenue = 0;
+  let manualIncomeValue = 0;
+  let calculatorDraftUpdatedAt = 0;
+  let calculatorDraftSyncRetryNeeded = false;
+  let allowEmptyDraftOverrideOnce = false;
+  const ORDER_REFRESH_KEY = 'anafres_order_refresh_v1';
   const LEGACY_ORDERS_KEY = 'anafres_orders_v1';
+  const CALCULATOR_DRAFT_KEY = 'anafres_calculator_draft_v1';
   const DASHBOARD_REFRESH_MS = 6000;
   let undoDeleteDayState = null;
   let undoDeleteDayTimer = null;
@@ -48,6 +67,118 @@
     if (typeof window.renderOrders === 'function') {
       window.renderOrders();
     }
+  }
+
+  function buildCalculatorDraftPayload() {
+    return {
+      products: calculatorProducts
+        .map(item => ({
+          id: String(item?.id || ''),
+          name: String(item?.name || ''),
+          qty: Math.max(0, Number(item?.qty || 0)),
+          price: Math.max(0, Number(item?.price || 0))
+        }))
+        .filter(item => String(item.name || '').trim() || Number(item.price || 0) > 0),
+      manualIncomeValue: Math.max(0, Number(manualIncomeValue || 0)),
+      useDashboardRevenue: isUsingDashboardRevenue(),
+      updatedAt: Math.max(0, Number(calculatorDraftUpdatedAt || 0))
+    };
+  }
+
+  function applyCalculatorDraft(draft) {
+    const incomingProducts = Array.isArray(draft?.products)
+      ? draft.products
+          .map(item => ({
+            id: String(item?.id || createCalculatorProduct().id),
+            name: String(item?.name || ''),
+            qty: Math.max(0, Number(item?.qty || 0)),
+            price: Math.max(0, Number(item?.price || 0))
+          }))
+          .filter(item => String(item.name || '').trim() || Number(item.price || 0) > 0)
+      : [];
+
+    calculatorProducts = incomingProducts.length ? incomingProducts : [createCalculatorProduct()];
+    manualIncomeValue = Math.max(0, Number(draft?.manualIncomeValue || 0));
+    calculatorDraftUpdatedAt = Math.max(0, Number(draft?.updatedAt || 0));
+
+    if (calculatorUseDashboardToggle) {
+      calculatorUseDashboardToggle.checked = Boolean(draft?.useDashboardRevenue ?? true);
+    }
+  }
+
+  async function pushCalculatorDraftToServer() {
+    try {
+      if (adminApp?.classList.contains('hidden')) return;
+      await api('/api/admin/calculadora/draft', {
+        method: 'PUT',
+        body: JSON.stringify({
+          draft: buildCalculatorDraftPayload(),
+          allowEmptyOverride: allowEmptyDraftOverrideOnce
+        })
+      });
+      calculatorDraftSyncRetryNeeded = false;
+      allowEmptyDraftOverrideOnce = false;
+    } catch (error) {
+      calculatorDraftSyncRetryNeeded = true;
+      if (error.status !== 401) {
+        console.warn('No se pudo sincronizar el borrador de calculadora', error);
+      }
+    }
+  }
+
+  async function hydrateCalculatorDraftFromServer() {
+    try {
+      const result = await api('/api/admin/calculadora/draft');
+      if (result?.draft) {
+        const remoteUpdatedAt = Math.max(0, Number(result.draft.updatedAt || 0));
+        const localUpdatedAt = Math.max(0, Number(calculatorDraftUpdatedAt || 0));
+
+        if (remoteUpdatedAt > localUpdatedAt) {
+          applyCalculatorDraft(result.draft);
+          localStorage.setItem(CALCULATOR_DRAFT_KEY, JSON.stringify(result.draft));
+          renderCalculatorProducts();
+        } else {
+          await pushCalculatorDraftToServer();
+        }
+        return;
+      }
+
+      await pushCalculatorDraftToServer();
+    } catch (error) {
+      calculatorDraftSyncRetryNeeded = true;
+      if (error.status !== 401) {
+        console.warn('No se pudo cargar el borrador remoto de calculadora', error);
+      }
+    }
+  }
+
+  function saveCalculatorDraft() {
+    calculatorDraftUpdatedAt = Math.max(Date.now(), Number(calculatorDraftUpdatedAt || 0) + 1);
+    const payload = buildCalculatorDraftPayload();
+
+    try {
+      localStorage.setItem(CALCULATOR_DRAFT_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore quota/storage errors to keep calculator usable.
+    }
+
+    void pushCalculatorDraftToServer();
+  }
+
+  function loadCalculatorDraft() {
+    try {
+      const raw = localStorage.getItem(CALCULATOR_DRAFT_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      applyCalculatorDraft(parsed || {});
+    } catch {
+      calculatorProducts = [createCalculatorProduct()];
+      manualIncomeValue = 0;
+      if (calculatorUseDashboardToggle) {
+        calculatorUseDashboardToggle.checked = true;
+      }
+    }
+
+    renderCalculatorProducts();
   }
 
   function removeLegacyOrderById(orderId) {
@@ -145,6 +276,15 @@
     }).format(Number(value || 0));
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function formatDate(value) {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '-';
@@ -181,6 +321,196 @@
     const producto = safe.productoMasVendido || 'Sin datos';
     const cantidad = Number(safe.productoMasVendidoCantidad || 0);
     document.getElementById('kpiProductoTop').textContent = cantidad > 0 ? `${producto} (${cantidad})` : producto;
+  }
+
+  function formatCurrency(value) {
+    const amount = Number(value || 0);
+    const formatted = new Intl.NumberFormat('es-MX', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+    return `$${formatted} MXN`;
+  }
+
+  function createCalculatorProduct() {
+    return {
+      id: (window.crypto && typeof window.crypto.randomUUID === 'function') ? window.crypto.randomUUID() : `calc-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: '',
+      qty: 1,
+      price: 0
+    };
+  }
+
+  function isUsingDashboardRevenue() {
+    return Boolean(calculatorUseDashboardToggle?.checked);
+  }
+
+  function parseMoneyFromText(text) {
+    const normalized = String(text || '')
+      .replace(/[^\d.,-]/g, '')
+      .replace(/\.(?=\d{3}(\D|$))/g, '')
+      .replace(',', '.');
+    const value = Number(normalized);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function syncDashboardRevenueFromKpi() {
+    const kpiEl = document.getElementById('kpiTotalVendido');
+    if (!kpiEl) return;
+    const parsed = parseMoneyFromText(kpiEl.textContent);
+    if (Number.isFinite(parsed)) {
+      dashboardRevenue = Math.max(0, parsed);
+    }
+  }
+
+  function getCalculatorProductsPayload() {
+    return calculatorProducts
+      .map(product => ({
+        ...product,
+        name: String(product?.name || '').trim(),
+        qty: Math.max(0, Number(product?.qty || 0)),
+        price: Math.max(0, Number(product?.price || 0))
+      }))
+      .filter(product => product.name || product.price > 0);
+  }
+
+  function calculateCalculatorTotals(products) {
+    const gastos = products.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.price || 0), 0);
+    const ganancias = isUsingDashboardRevenue() ? dashboardRevenue : Math.max(0, manualIncomeValue);
+    const resultado = ganancias - gastos;
+
+    let status = 'Ganancia restante';
+    let message = 'Tus ingresos superan los gastos.';
+    if (resultado < 0) {
+      status = 'Déficit';
+      message = 'Los gastos superan a las ganancias.';
+    } else if (resultado === 0) {
+      status = 'Gastos iguales a las ganancias';
+      message = 'El resultado está en equilibrio.';
+    }
+
+    return {
+      gastos: Math.round(gastos * 100) / 100,
+      ganancias: Math.round(ganancias * 100) / 100,
+      resultado: Math.round(resultado * 100) / 100,
+      status,
+      message
+    };
+  }
+
+  function renderCalculatorSummary() {
+    const useDashboardRevenue = isUsingDashboardRevenue();
+    if (useDashboardRevenue) {
+      syncDashboardRevenueFromKpi();
+    }
+    const payload = calculateCalculatorTotals(getCalculatorProductsPayload());
+    if (calculatorExpensesTotal) calculatorExpensesTotal.textContent = formatCurrency(payload.gastos);
+    if (calculatorIncomeTotal) calculatorIncomeTotal.textContent = formatCurrency(payload.ganancias);
+    if (calculatorFinalResult) calculatorFinalResult.textContent = formatCurrency(payload.resultado);
+    if (calculatorResultState) {
+      calculatorResultState.textContent = payload.status;
+      calculatorResultState.classList.remove('deficit', 'neutral');
+      if (payload.status === 'Déficit') {
+        calculatorResultState.classList.add('deficit');
+      } else if (payload.status === 'Gastos iguales a las ganancias') {
+        calculatorResultState.classList.add('neutral');
+      }
+    }
+    if (calculatorResultMessage) calculatorResultMessage.textContent = payload.message;
+
+    if (calculatorIncomeInput) {
+      calculatorIncomeInput.disabled = useDashboardRevenue;
+      calculatorIncomeInput.classList.toggle('disabled-input', useDashboardRevenue);
+      if (useDashboardRevenue) {
+        calculatorIncomeInput.value = String(dashboardRevenue.toFixed(2));
+      } else {
+        calculatorIncomeInput.value = String(manualIncomeValue.toFixed(2));
+      }
+    }
+  }
+
+  function renderCalculatorProducts() {
+    if (!calculatorProductsRoot) return;
+
+    if (!calculatorProducts.length) {
+      calculatorProducts = [createCalculatorProduct()];
+    }
+
+    calculatorProductsRoot.innerHTML = calculatorProducts.map((product, index) => `
+      <div class="calculator-product-row">
+        <div class="form-group">
+          <label>Producto o insumo</label>
+          <input type="text" value="${escapeHtml(product.name)}" data-index="${index}" data-field="name" placeholder="Ej. Tortilla, aceite, etc." />
+        </div>
+        <div class="form-group">
+          <label>Cantidad</label>
+          <input type="number" min="0" step="1" value="${Number(product.qty || 0)}" data-index="${index}" data-field="qty" />
+        </div>
+        <div class="form-group">
+          <label>Precio unitario</label>
+          <input type="number" min="0" step="0.01" value="${Number(product.price || 0)}" data-index="${index}" data-field="price" />
+        </div>
+        <div class="form-group">
+          <label>Total</label>
+          <input type="text" value="${formatCurrency(Number(product.qty || 0) * Number(product.price || 0))}" readonly />
+        </div>
+        <div class="form-group">
+          <label>Acción</label>
+          <button class="danger-btn" type="button" data-action="remove-calculator-product" data-index="${index}">Eliminar</button>
+        </div>
+      </div>
+    `).join('');
+
+    calculatorProductsRoot.querySelectorAll('input[data-field]').forEach(input => {
+      input.addEventListener('input', handleCalculatorInput);
+      input.addEventListener('change', handleCalculatorInput);
+    });
+
+    renderCalculatorSummary();
+  }
+
+  function handleCalculatorInput(event) {
+    const input = event.target;
+    const index = Number(input.dataset.index);
+    if (!Number.isInteger(index) || !calculatorProducts[index]) return;
+
+    const field = input.dataset.field;
+    if (field === 'name') {
+      calculatorProducts[index].name = input.value;
+      saveCalculatorDraft();
+      renderCalculatorSummary();
+      return;
+    }
+
+    if (field === 'qty') {
+      const value = Math.max(0, Number(input.value || 0));
+      calculatorProducts[index].qty = Number.isFinite(value) ? value : 0;
+      input.value = calculatorProducts[index].qty;
+    } else if (field === 'price') {
+      const value = Math.max(0, Number(input.value || 0));
+      calculatorProducts[index].price = Number.isFinite(value) ? value : 0;
+      input.value = calculatorProducts[index].price;
+    }
+
+    const row = input.closest('.calculator-product-row');
+    const totalInput = row?.querySelector('input[readonly]');
+    if (totalInput) {
+      totalInput.value = formatCurrency(Number(calculatorProducts[index].qty || 0) * Number(calculatorProducts[index].price || 0));
+    }
+
+    saveCalculatorDraft();
+    renderCalculatorSummary();
+  }
+
+  function resetCalculatorSection() {
+    calculatorProducts = [createCalculatorProduct()];
+    manualIncomeValue = 0;
+    if (!isUsingDashboardRevenue() && calculatorIncomeInput) {
+      calculatorIncomeInput.value = '0.00';
+    }
+    allowEmptyDraftOverrideOnce = true;
+    saveCalculatorDraft();
+    renderCalculatorProducts();
   }
 
   function renderOrders(orders) {
@@ -270,7 +600,9 @@
         api('/api/pedidos')
       ]);
 
-      renderStats(statsResult.stats || {});
+      const stats = statsResult.stats || {};
+      dashboardRevenue = Number(stats.totalVendido || 0);
+      renderStats(stats);
       currentOrders = Array.isArray(pedidosResult.pedidos) ? pedidosResult.pedidos : [];
       renderOrders(currentOrders);
       syncLegacyOrdersFromApiOrders(currentOrders);
@@ -278,13 +610,16 @@
       if (typeof window.renderOrders === 'function') {
         window.renderOrders();
       }
+
+      renderCalculatorSummary();
     } catch (error) {
       if (error.status === 401) {
         setAuthenticated(false);
         stopRefresh();
         return;
       }
-      showToast('No se pudo actualizar el dashboard', true);
+
+      console.warn('No se pudo actualizar el dashboard', error);
     }
   }
 
@@ -403,6 +738,7 @@
 
       if (isAuthed) {
         await loadDashboardData();
+        await hydrateCalculatorDraftFromServer();
         startRefresh();
       } else {
         stopRefresh();
@@ -436,6 +772,7 @@
       if (adminPasswordInput) adminPasswordInput.value = '';
       setAuthenticated(true);
       await loadDashboardData();
+      await hydrateCalculatorDraftFromServer();
       startRefresh();
       showToast('Sesión iniciada');
     } catch {
@@ -520,6 +857,70 @@
       dayFilterInput.value = getTodayDateKey();
     }
 
+    if (calculatorAddProductBtn) {
+      calculatorAddProductBtn.addEventListener('click', () => {
+        calculatorProducts.push(createCalculatorProduct());
+        saveCalculatorDraft();
+        renderCalculatorProducts();
+      });
+    }
+
+    if (calculatorClearBtn) {
+      calculatorClearBtn.addEventListener('click', resetCalculatorSection);
+    }
+
+    if (calculatorUseDashboardToggle) {
+      const handleRevenueToggle = () => {
+        if (!calculatorUseDashboardToggle.checked && calculatorIncomeInput) {
+          manualIncomeValue = 0;
+          calculatorIncomeInput.value = '0.00';
+        }
+        if (calculatorUseDashboardToggle.checked) {
+          syncDashboardRevenueFromKpi();
+        }
+        saveCalculatorDraft();
+        renderCalculatorSummary();
+      };
+
+      calculatorUseDashboardToggle.addEventListener('change', handleRevenueToggle);
+      calculatorUseDashboardToggle.addEventListener('input', handleRevenueToggle);
+      calculatorUseDashboardToggle.addEventListener('click', handleRevenueToggle);
+    }
+
+    if (calculatorIncomeInput) {
+      calculatorIncomeInput.addEventListener('input', () => {
+        if (!isUsingDashboardRevenue()) {
+          const parsed = Number(calculatorIncomeInput.value || 0);
+          manualIncomeValue = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+          saveCalculatorDraft();
+          renderCalculatorSummary();
+        }
+      });
+      calculatorIncomeInput.addEventListener('change', () => {
+        if (!isUsingDashboardRevenue()) {
+          const parsed = Number(calculatorIncomeInput.value || 0);
+          manualIncomeValue = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+          saveCalculatorDraft();
+          renderCalculatorSummary();
+        }
+      });
+    }
+
+    if (calculatorProductsRoot) {
+      calculatorProductsRoot.addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="remove-calculator-product"]');
+        if (!button) return;
+        const index = Number(button.dataset.index);
+        if (!Number.isInteger(index)) return;
+        calculatorProducts = calculatorProducts.filter((_, itemIndex) => itemIndex !== index);
+        if (!calculatorProducts.length || !calculatorProducts.some(item => String(item?.name || '').trim() || Number(item?.price || 0) > 0)) {
+          allowEmptyDraftOverrideOnce = true;
+        }
+        saveCalculatorDraft();
+        renderCalculatorProducts();
+      });
+    }
+
     if (loginBtn) {
       loginBtn.addEventListener('click', handleLogin, true);
     }
@@ -569,6 +970,15 @@
     window.addEventListener('focus', () => {
       if (!adminApp.classList.contains('hidden')) {
         loadDashboardData();
+        if (calculatorDraftSyncRetryNeeded) {
+          void pushCalculatorDraftToServer();
+        }
+      }
+    });
+
+    window.addEventListener('storage', event => {
+      if (event.key === ORDER_REFRESH_KEY) {
+        loadDashboardData();
       }
     });
 
@@ -595,5 +1005,6 @@
   }
 
   bindEvents();
+  loadCalculatorDraft();
   checkSession();
 })();
