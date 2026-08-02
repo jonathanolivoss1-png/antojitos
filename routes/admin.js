@@ -8,6 +8,22 @@ const PROMOS_KEY = 'site_promotions_v1';
 const PRODUCTS_KEY = 'site_products_v1';
 const CONTENT_KEY = 'site_content_v1';
 const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
+const publicSettingsClients = new Set();
+
+function sendSseEvent(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function broadcastPublicSettingsEvent(event, payload) {
+  for (const client of publicSettingsClients) {
+    try {
+      sendSseEvent(client, event, payload);
+    } catch {
+      publicSettingsClients.delete(client);
+    }
+  }
+}
 
 function parseProductos(raw) {
   try {
@@ -563,6 +579,34 @@ router.get('/public-settings', (req, res) => {
   }
 });
 
+router.get('/public-settings/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  publicSettingsClients.add(res);
+  sendSseEvent(res, 'connected', { ok: true, ts: Date.now() });
+
+  const keepAliveTimer = setInterval(() => {
+    try {
+      res.write(': keep-alive\n\n');
+    } catch {
+      clearInterval(keepAliveTimer);
+      publicSettingsClients.delete(res);
+    }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveTimer);
+    publicSettingsClients.delete(res);
+  });
+});
+
 router.get('/promotions', requireAuth, (req, res) => {
   try {
     return res.json({ ok: true, promotions: readPromotions() });
@@ -619,6 +663,7 @@ router.put('/products', requireAuth, (req, res) => {
   try {
     const products = normalizeProducts(req.body?.products);
     writeProducts(products);
+    broadcastPublicSettingsEvent('products-updated', { ts: Date.now() });
     return res.json({ ok: true, products });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron guardar productos' });

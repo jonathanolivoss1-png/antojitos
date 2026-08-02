@@ -2057,7 +2057,8 @@
       preparedSeen: 'anafres_prepared_seen_v1',
       pendingOrder: 'anafres_pending_order_v1',
       clientToken: 'anafres_client_token_v1',
-      orderRefresh: 'anafres_order_refresh_v1'
+      orderRefresh: 'anafres_order_refresh_v1',
+      productsRefresh: 'anafres_products_refresh_v1'
     };
 
     const menuBtn = document.getElementById('menuBtn');
@@ -2372,13 +2373,13 @@
           renderPromotions();
         }
 
-        // El menu se actualiza solo cuando se permite explicitamente (no en tiempo real).
-        if (includeProducts && Array.isArray(nextProducts) && nextProducts.length) {
+        // El menu se actualiza cuando se solicita sincronizar productos.
+        if (includeProducts && Array.isArray(nextProducts)) {
           appState.products = nextProducts;
           renderMenu();
         }
 
-        if (nextContent || Array.isArray(nextPromotions) || (includeProducts && Array.isArray(nextProducts) && nextProducts.length)) {
+        if (nextContent || Array.isArray(nextPromotions) || (includeProducts && Array.isArray(nextProducts))) {
           saveAppState();
           initReveal();
         }
@@ -2391,6 +2392,7 @@
     let globalSyncTimer = null;
     const ORDER_HISTORY_SYNC_INTERVAL_MS = 8000;
     let orderHistorySyncTimer = null;
+    let globalSettingsStream = null;
 
     function startGlobalRealtimeSync() {
       if (globalSyncTimer) {
@@ -2410,12 +2412,25 @@
       saveJSON(STORAGE_KEYS.appState, appState);
     }
 
+    function startGlobalSettingsStream() {
+      if (typeof window.EventSource !== 'function') return;
+
+      if (globalSettingsStream) {
+        globalSettingsStream.close();
+      }
+
+      globalSettingsStream = new EventSource('/api/admin/public-settings/stream');
+      globalSettingsStream.addEventListener('products-updated', () => {
+        syncGlobalSettingsFromApi({ includeProducts: true });
+      });
+    }
+
     function refreshFromServerAndStorage() {
       appState = loadAppState();
       renderStaticContent();
       renderPromotions();
       renderMenu();
-      syncGlobalSettingsFromApi({ includeProducts: true });
+      syncGlobalSettingsFromApi({ includeProducts: false });
     }
 
     function toggleMenu() {
@@ -3335,6 +3350,11 @@
     });
 
     window.addEventListener('storage', event => {
+      if (event.key === STORAGE_KEYS.productsRefresh) {
+        syncGlobalSettingsFromApi({ includeProducts: true });
+        return;
+      }
+
       if (!event.key || event.key === STORAGE_KEYS.appState) {
         refreshFromServerAndStorage();
       }
@@ -3352,6 +3372,7 @@
     renderMenu();
     syncGlobalSettingsFromApi({ includeProducts: true });
     startGlobalRealtimeSync();
+    startGlobalSettingsStream();
     renderCart();
     syncOrderHistoryFromApi();
     startOrderHistoryRealtimeSync();

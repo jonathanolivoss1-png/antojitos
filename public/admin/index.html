@@ -652,8 +652,13 @@
     </section>
 
     <section class="panel">
-      <h2>Productos</h2>
-      <p class="panel-copy">Edita nombre, descripción, precio, imagen, activación y disponibilidad. Cada producto mantiene sus opciones y estado de inventario.</p>
+      <div class="product-top">
+        <div>
+          <h2>Productos</h2>
+          <p class="panel-copy">Edita nombre, descripción, precio, imagen, activación y disponibilidad. Cada producto mantiene sus opciones y estado de inventario.</p>
+        </div>
+        <button class="btn" id="addProductBtn" type="button">Nuevo producto</button>
+      </div>
       <div class="list" id="productList"></div>
       <div class="footer-actions">
         <button class="save-btn" id="saveProductsBtn" type="button">Guardar productos</button>
@@ -797,7 +802,8 @@
     const STORAGE_KEYS = {
       appState: 'anafres_app_state_v1',
       orders: 'anafres_orders_v1',
-      adminAuth: 'anafres_admin_auth_v1'
+      adminAuth: 'anafres_admin_auth_v1',
+      productsRefresh: 'anafres_products_refresh_v1'
     };
 
     const loginWrap = document.getElementById('loginWrap');
@@ -980,6 +986,7 @@
               <span class="tag">${product.category}</span>
               <h3>${product.name}</h3>
             </div>
+            <button class="danger-btn" type="button" data-action="remove-product" data-product-id="${product.id}">Eliminar producto</button>
             <div class="switches">
               <label class="switch"><input type="checkbox" data-field="active" ${product.active ? 'checked' : ''} /> Activo</label>
               <label class="switch"><input type="checkbox" data-field="available" ${product.available ? 'checked' : ''} /> Disponible</label>
@@ -1335,6 +1342,7 @@
         }
 
         appState.products = Array.isArray(result.products) ? result.products : appState.products;
+        localStorage.setItem(STORAGE_KEYS.productsRefresh, String(Date.now()));
       } catch (error) {
         showToast(error.message || 'No se pudieron guardar productos');
         return;
@@ -1386,9 +1394,47 @@
       renderPromotions();
     }
 
+    function addProduct() {
+      const productId = `product-${Date.now()}`;
+      const optionId = `option-${Date.now()}`;
+
+      appState.products.push({
+        id: productId,
+        name: 'Nuevo producto',
+        description: 'Describe este producto para mostrarlo en el menu.',
+        image: '',
+        category: 'general',
+        tag: 'Nuevo',
+        note: '',
+        priceLabel: '$0',
+        active: true,
+        available: true,
+        options: [
+          {
+            id: optionId,
+            name: 'Opcion 1',
+            price: 0
+          }
+        ]
+      });
+
+      renderProducts();
+      showToast('Producto agregado. Guarda para publicarlo globalmente');
+    }
+
     function removePromotion(index) {
       appState.promotions.splice(index, 1);
       renderPromotions();
+    }
+
+    function removeProduct(productId) {
+      const before = appState.products.length;
+      appState.products = appState.products.filter(item => item.id !== productId);
+      if (appState.products.length === before) return;
+
+      persistState();
+      renderProducts();
+      void saveProducts();
     }
 
     function requireAuth() {
@@ -1444,6 +1490,7 @@
     document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
     document.getElementById('savePromosBtn').addEventListener('click', savePromotions);
     document.getElementById('saveProductsBtn').addEventListener('click', saveProducts);
+    document.getElementById('addProductBtn').addEventListener('click', addProduct);
     const saveOrdersBtn = document.getElementById('saveOrdersBtn');
     if (saveOrdersBtn) {
       saveOrdersBtn.addEventListener('click', saveOrders);
@@ -1454,6 +1501,19 @@
       const button = event.target.closest('[data-action="remove-promo"]');
       if (!button) return;
       removePromotion(Number(button.dataset.index));
+    });
+
+    document.getElementById('productList').addEventListener('click', event => {
+      const button = event.target.closest('[data-action="remove-product"]');
+      if (!button) return;
+
+      const productId = String(button.dataset.productId || '');
+      if (!productId) return;
+
+      const confirmed = window.confirm('¿Eliminar este producto del panel? Se guardará y publicará de forma global.');
+      if (!confirmed) return;
+
+      removeProduct(productId);
     });
 
     requireAuth();
