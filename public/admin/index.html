@@ -893,7 +893,8 @@
       appState: 'anafres_app_state_v1',
       orders: 'anafres_orders_v1',
       adminAuth: 'anafres_admin_auth_v1',
-      productsRefresh: 'anafres_products_refresh_v1'
+      productsRefresh: 'anafres_products_refresh_v1',
+      globalSettingsRefresh: 'anafres_global_settings_refresh_v1'
     };
 
     const loginWrap = document.getElementById('loginWrap');
@@ -1313,11 +1314,11 @@
       storageAdapter.saveState(appState);
     }
 
-    function notifyProductsRefresh() {
+    function notifyGlobalSettingsRefresh() {
       try {
-        localStorage.setItem(STORAGE_KEYS.productsRefresh, String(Date.now()));
+        localStorage.setItem(STORAGE_KEYS.globalSettingsRefresh, String(Date.now()));
       } catch (error) {
-        console.warn('No se pudo notificar la actualización del menú.', error);
+        console.warn('No se pudo notificar la actualización global del menú.', error);
       }
     }
 
@@ -1488,7 +1489,7 @@
         }
 
         appState.products = Array.isArray(result.products) ? result.products : appState.products;
-        notifyProductsRefresh();
+        localStorage.setItem(STORAGE_KEYS.productsRefresh, String(Date.now()));
       } catch (error) {
         showToast(error.message || 'No se pudieron guardar productos');
         return;
@@ -1496,7 +1497,7 @@
 
       persistState();
       renderProducts();
-      notifyProductsRefresh();
+      notifyGlobalSettingsRefresh();
       showToast('Productos guardados');
     }
 

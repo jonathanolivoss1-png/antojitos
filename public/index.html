@@ -616,36 +616,6 @@
       fill: currentColor;
     }
 
-    /* Floating WhatsApp */
-    .wa-float {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      z-index: 150;
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      background: var(--wa);
-      color: white;
-      font-weight: 900;
-      font-size: 1rem;
-      text-decoration: none;
-      padding: 0.9rem 1.4rem;
-      border-radius: 50px;
-      box-shadow: 0 8px 24px rgba(37, 211, 102, 0.4);
-      transition: transform 0.2s, box-shadow 0.2s;
-      border: 2px solid white;
-    }
-    .wa-float:hover {
-      transform: translateY(-3px) scale(1.03);
-      box-shadow: 0 12px 32px rgba(37, 211, 102, 0.5);
-    }
-    .wa-float svg {
-      width: 22px;
-      height: 22px;
-      fill: currentColor;
-    }
-
     /* Info section */
     .info-section {
       background: white;
@@ -725,8 +695,6 @@
       .menu-btn { display: block; }
       .hero h1 { font-size: 2.2rem; }
       .info-section { grid-template-columns: 1fr; padding: 1.5rem; }
-      .wa-float span { display: none; }
-      .wa-float { padding: 0.9rem; }
     }
     .hero-surface, .featured-card, .about-card, .location-card, .cart-panel, .customer-box {
       backdrop-filter: blur(10px);
@@ -1765,17 +1733,11 @@
         display: none;
       }
 
-      .wa-float {
-        right: 16px;
-        bottom: 108px;
-      }
-
       .mobile-bottom-nav {
         display: grid;
       }
 
-      body.cart-open .mobile-bottom-nav,
-      body.cart-open .wa-float {
+      body.cart-open .mobile-bottom-nav {
         opacity: 0;
         pointer-events: none;
       }
@@ -2019,11 +1981,6 @@
     </div>
   </div>
 
-  <a href="https://wa.me/527775640868?text=Hola,%20quiero%20hacer%20un%20pedido" class="wa-float" target="_blank" aria-label="WhatsApp">
-    <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-    <span>Pedir por WhatsApp</span>
-  </a>
-
   <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación rápida móvil">
     <button type="button" data-target="#top" class="active"><span class="nav-icon">🏠</span><span>Inicio</span></button>
     <button type="button" data-target="#menu"><span class="nav-icon">🌮</span><span>Menú</span></button>
@@ -2075,7 +2032,8 @@
       pendingOrder: 'anafres_pending_order_v1',
       clientToken: 'anafres_client_token_v1',
       orderRefresh: 'anafres_order_refresh_v1',
-      productsRefresh: 'anafres_products_refresh_v1'
+      productsRefresh: 'anafres_products_refresh_v1',
+      globalSettingsRefresh: 'anafres_global_settings_refresh_v1'
     };
 
     const menuBtn = document.getElementById('menuBtn');
@@ -2372,8 +2330,31 @@
       return normalized;
     }
 
+    function serializeProducts(products) {
+      return JSON.stringify((Array.isArray(products) ? products : []).map(product => ({
+        id: product?.id || '',
+        name: product?.name || '',
+        description: product?.description || '',
+        image: product?.image || '',
+        category: product?.category || '',
+        tag: product?.tag || '',
+        note: product?.note || '',
+        priceLabel: product?.priceLabel || '',
+        active: Boolean(product?.active),
+        available: Boolean(product?.available),
+        options: Array.isArray(product?.options) ? product.options.map(option => ({
+          id: option?.id || '',
+          name: option?.name || '',
+          price: Number(option?.price || 0)
+        })) : [],
+        choices: Array.isArray(product?.choices) ? product.choices.slice() : undefined
+      })));
+    }
+
     async function syncGlobalSettingsFromApi(options = {}) {
-      const includeProducts = options.includeProducts !== false;
+      const includeProducts = options.includeProducts === true;
+      const includeContent = options.includeContent !== false;
+      const includePromotions = options.includePromotions !== false;
       try {
         const response = await fetch('/api/admin/public-settings');
         const result = await response.json().catch(() => null);
@@ -2382,8 +2363,9 @@
         const nextContent = result.settings.content;
         const nextPromotions = result.settings.promotions;
         const nextProducts = result.settings.products;
+        const currentProductsSignature = serializeProducts(appState.products);
 
-        if (nextContent && typeof nextContent === 'object') {
+        if (includeContent && nextContent && typeof nextContent === 'object') {
           appState.content = {
             ...appState.content,
             ...nextContent
@@ -2391,18 +2373,22 @@
           renderStaticContent();
         }
 
-        if (Array.isArray(nextPromotions)) {
+        if (includePromotions && Array.isArray(nextPromotions)) {
           appState.promotions = nextPromotions;
           renderPromotions();
         }
 
-        // El menu se actualiza cuando se solicita sincronizar productos.
         if (includeProducts && Array.isArray(nextProducts)) {
-          appState.products = nextProducts;
-          renderMenu();
+          const nextProductsSignature = serializeProducts(nextProducts);
+          const productsChanged = currentProductsSignature !== nextProductsSignature;
+
+          if (productsChanged) {
+            appState.products = nextProducts;
+            renderMenu();
+          }
         }
 
-        if (nextContent || Array.isArray(nextPromotions) || (includeProducts && Array.isArray(nextProducts))) {
+        if ((includeContent && nextContent && typeof nextContent === 'object') || (includePromotions && Array.isArray(nextPromotions)) || (includeProducts && Array.isArray(nextProducts))) {
           saveAppState();
           initReveal();
         }
@@ -2421,7 +2407,7 @@
       if (globalSyncTimer) {
         clearInterval(globalSyncTimer);
       }
-      globalSyncTimer = setInterval(() => syncGlobalSettingsFromApi({ includeProducts: true }), GLOBAL_SYNC_INTERVAL_MS);
+      globalSyncTimer = setInterval(() => syncGlobalSettingsFromApi({ includeProducts: false, includeContent: false, includePromotions: false }), GLOBAL_SYNC_INTERVAL_MS);
     }
 
     function startOrderHistoryRealtimeSync() {
@@ -2444,13 +2430,13 @@
 
       globalSettingsStream = new EventSource('/api/admin/public-settings/stream');
       globalSettingsStream.addEventListener('products-updated', () => {
-        syncGlobalSettingsFromApi({ includeProducts: true });
+        syncGlobalSettingsFromApi({ includeProducts: true, includeContent: false, includePromotions: false });
       });
       globalSettingsStream.addEventListener('promotions-updated', () => {
-        syncGlobalSettingsFromApi({ includeProducts: false });
+        syncGlobalSettingsFromApi({ includeProducts: false, includeContent: true, includePromotions: true });
       });
       globalSettingsStream.addEventListener('content-updated', () => {
-        syncGlobalSettingsFromApi({ includeProducts: false });
+        syncGlobalSettingsFromApi({ includeProducts: false, includeContent: true, includePromotions: false });
       });
     }
 
@@ -3393,8 +3379,8 @@
     });
 
     window.addEventListener('storage', event => {
-      if (event.key === STORAGE_KEYS.productsRefresh) {
-        syncGlobalSettingsFromApi({ includeProducts: true });
+      if (event.key === STORAGE_KEYS.productsRefresh || event.key === STORAGE_KEYS.globalSettingsRefresh) {
+        syncGlobalSettingsFromApi({ includeProducts: true, includeContent: false, includePromotions: false });
         return;
       }
 
@@ -3413,7 +3399,7 @@
     renderStaticContent();
     renderPromotions();
     renderMenu();
-    syncGlobalSettingsFromApi({ includeProducts: true });
+    syncGlobalSettingsFromApi({ includeProducts: true, includeContent: true, includePromotions: true });
     startGlobalRealtimeSync();
     startGlobalSettingsStream();
     renderCart();
