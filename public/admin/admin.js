@@ -744,13 +744,13 @@
       return;
     }
 
-    tableBody.innerHTML = orders.map(order => {
+    tableBody.innerHTML = orders.map((order, index) => {
       const estado = order.estado || 'Pendiente';
       const productos = Array.isArray(order.productos) ? order.productos : [];
 
       return `
         <tr data-order-id="${order.id}">
-          <td>#${order.id}</td>
+          <td>#${index + 1}</td>
           <td>${order.cliente || '-'}</td>
           <td>${order.telefono || '-'}</td>
           <td>${order.direccion || '-'}</td>

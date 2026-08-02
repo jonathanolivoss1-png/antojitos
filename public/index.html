@@ -2446,6 +2446,12 @@
       globalSettingsStream.addEventListener('products-updated', () => {
         syncGlobalSettingsFromApi({ includeProducts: true });
       });
+      globalSettingsStream.addEventListener('promotions-updated', () => {
+        syncGlobalSettingsFromApi({ includeProducts: false });
+      });
+      globalSettingsStream.addEventListener('content-updated', () => {
+        syncGlobalSettingsFromApi({ includeProducts: false });
+      });
     }
 
     function refreshFromServerAndStorage() {
@@ -2890,8 +2896,8 @@
         subtotal,
         envio,
         total,
-        status: 'preparando',
-        estado: 'Pendiente',
+        status: 'confirmado',
+        estado: 'Confirmado',
         items: cart.map(item => ({
           key: item.key,
           name: item.name,
@@ -2967,7 +2973,7 @@
         subtotal: Number(orderData.subtotal) || 0,
         envio: Number(orderData.envio) || 0,
         total: Number(orderData.total) || 0,
-        estado: 'Pendiente',
+        estado: 'Confirmado',
         fecha: orderData.createdAt
       };
 
@@ -3064,7 +3070,7 @@
           createdAt: savedOrder.fecha || new Date().toISOString(),
           deliveryType: savedOrder.tipoEntrega || deliveryType,
           total: Number(savedOrder.total || total),
-          status: savedOrder.estado || 'Pendiente',
+          status: savedOrder.estado || 'Confirmado',
           items: Array.isArray(savedOrder.productos) ? savedOrder.productos : orderData.items
         });
         notifyAdminDashboardOrderChange();

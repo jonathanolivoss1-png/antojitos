@@ -1,6 +1,7 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const db = require('../database/db');
+const { maybeArchiveAndResetDailyOrders } = require('../database/init');
 const { requireAuth } = require('../middleware/auth');
 const { broadcastAdminEvent } = require('../realtime/events');
 
@@ -93,7 +94,7 @@ function buildCreatePayload(body) {
   const subtotal = toMoney(body?.subtotal ?? body?.total ?? 0);
   const envio = toMoney(body?.envio ?? 0);
   const total = toMoney(body?.total ?? subtotal + envio);
-  const estado = normalizeEstado(body?.estado || 'Pendiente');
+  const estado = normalizeEstado(body?.estado || 'Confirmado');
   const fecha = body?.fecha && !Number.isNaN(Date.parse(body.fecha)) ? new Date(body.fecha).toISOString() : new Date().toISOString();
 
   return {
@@ -183,6 +184,7 @@ router.get('/', requireAuth, (req, res) => {
 
 router.get('/day', requireAuth, (req, res) => {
   try {
+    maybeArchiveAndResetDailyOrders();
     const date = sanitizeText(req.query?.date || '', 10);
     const tzOffset = Number(req.query?.tzOffset);
     if (!isValidDateKey(date)) {
@@ -296,6 +298,70 @@ router.delete('/day', requireAuth, (req, res) => {
   }
 });
 
+router.post('/day/archive-and-reset', requireAuth, (req, res) => {
+  try {
+    const date = sanitizeText(req.body?.date || '', 10);
+    const tzOffset = Number(req.body?.tzOffset);
+    if (!isValidDateKey(date)) {
+      return res.status(400).json({ ok: false, message: 'Fecha invalida. Usa formato YYYY-MM-DD' });
+    }
+
+    const range = buildUtcRangeFromDateKey(date, tzOffset);
+    const rows = db
+      .prepare('SELECT * FROM pedidos WHERE fecha >= ? AND fecha < ? ORDER BY datetime(fecha) DESC, id DESC')
+      .all(range.startIso, range.endIso);
+
+    if (!rows.length) {
+      return res.json({ ok: true, archivedCount: 0, date, archivedOrders: [] });
+    }
+
+    const insert = db.prepare(`
+      INSERT INTO pedidos_archivados (
+        fecha, clienteToken, cliente, telefono, direccion, tipoEntrega, productos, subtotal, envio, total, estado, creado_en, origen_pedido_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const tx = db.transaction(items => {
+      items.forEach(order => {
+        insert.run(
+          date,
+          order.clienteToken || '',
+          order.cliente || '',
+          order.telefono || '',
+          order.direccion || '',
+          order.tipoEntrega || '',
+          order.productos || '[]',
+          Number(order.subtotal || 0),
+          Number(order.envio || 0),
+          Number(order.total || 0),
+          order.estado || 'Pendiente',
+          new Date().toISOString(),
+          order.id
+        );
+      });
+    });
+
+    tx(rows);
+
+    const result = db.prepare('DELETE FROM pedidos WHERE fecha >= ? AND fecha < ?').run(range.startIso, range.endIso);
+    const remaining = db.prepare('SELECT id FROM pedidos LIMIT 1').get();
+    if (!remaining) {
+      db.prepare("DELETE FROM sqlite_sequence WHERE name = 'pedidos'").run();
+    }
+
+    broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'archived-day' });
+
+    return res.json({
+      ok: true,
+      archivedCount: Number(result.changes || 0),
+      date,
+      archivedOrders: rows.map(mapPedido)
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo guardar y reiniciar el dia' });
+  }
+});
+
 router.post('/day/restore', requireAuth, (req, res) => {
   try {
     const incoming = Array.isArray(req.body?.orders) ? req.body.orders : [];
@@ -389,7 +455,7 @@ router.put('/:id', requireAuth, (req, res) => {
       return res.status(400).json({ ok: false, message: 'ID invalido' });
     }
 
-    const estado = normalizeEstado(req.body?.estado);
+    const estado = normalizeEstado(req.body?.estado || 'Confirmado');
     if (!ALLOWED_ESTADOS.has(estado)) {
       return res.status(400).json({ ok: false, message: 'Estado invalido' });
     }

@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const bcrypt = require('bcryptjs');
 const db = require('./db');
+const { broadcastAdminEvent } = require('../realtime/events');
 
 const CONFIG_KEYS = {
   content: 'site_content_v1',
@@ -155,12 +156,104 @@ const DEFAULT_GLOBAL_PRODUCTS = [
   }
 ];
 
+const DAILY_ARCHIVE_STATE_KEY = 'daily_archive_state_v1';
+const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
+
 function upsertConfig(clave, valor) {
   db.prepare(`
     INSERT INTO configuracion (clave, valor)
     VALUES (?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
   `).run(clave, JSON.stringify(valor));
+}
+
+function getMexicoCityDateKey(date = new Date()) {
+  const utcMillis = date.getTime();
+  const localMillis = utcMillis - MEXICO_CITY_TZ_OFFSET_MINUTES * 60 * 1000;
+  const localDate = new Date(localMillis);
+  const year = localDate.getUTCFullYear();
+  const month = String(localDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(localDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isValidDateKey(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function buildUtcRangeFromDateKey(dateKey, tzOffsetMinutes) {
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  const safeOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+  const startUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + safeOffset * 60 * 1000;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+  return {
+    startIso: new Date(startUtcMs).toISOString(),
+    endIso: new Date(endUtcMs).toISOString()
+  };
+}
+
+function readDailyArchiveState() {
+  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(DAILY_ARCHIVE_STATE_KEY);
+  if (!row?.valor) return { lastProcessedDate: null };
+  try {
+    const parsed = JSON.parse(row.valor);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeDailyArchiveState(value) {
+  upsertConfig(DAILY_ARCHIVE_STATE_KEY, value);
+}
+
+function archiveOrdersForDate(dateKey) {
+  if (!isValidDateKey(dateKey)) return { archivedCount: 0 };
+
+  const range = buildUtcRangeFromDateKey(dateKey, MEXICO_CITY_TZ_OFFSET_MINUTES);
+  const rows = db.prepare('SELECT * FROM pedidos WHERE fecha >= ? AND fecha < ? ORDER BY datetime(fecha) DESC, id DESC').all(range.startIso, range.endIso);
+
+  if (!rows.length) {
+    return { archivedCount: 0 };
+  }
+
+  const insert = db.prepare(`
+    INSERT INTO pedidos_archivados (
+      fecha, clienteToken, cliente, telefono, direccion, tipoEntrega, productos, subtotal, envio, total, estado, creado_en, origen_pedido_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const tx = db.transaction(items => {
+    items.forEach(order => {
+      insert.run(
+        dateKey,
+        order.clienteToken || '',
+        order.cliente || '',
+        order.telefono || '',
+        order.direccion || '',
+        order.tipoEntrega || '',
+        order.productos || '[]',
+        Number(order.subtotal || 0),
+        Number(order.envio || 0),
+        Number(order.total || 0),
+        order.estado || 'Pendiente',
+        new Date().toISOString(),
+        order.id
+      );
+    });
+  });
+
+  tx(rows);
+
+  const result = db.prepare('DELETE FROM pedidos WHERE fecha >= ? AND fecha < ?').run(range.startIso, range.endIso);
+  const remaining = db.prepare('SELECT id FROM pedidos LIMIT 1').get();
+  if (!remaining) {
+    db.prepare("DELETE FROM sqlite_sequence WHERE name = 'pedidos'").run();
+  }
+
+  broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'auto-archived-day' });
+
+  return { archivedCount: Number(result.changes || 0) };
 }
 
 function seedGlobalConfigIfMissing() {
@@ -171,6 +264,25 @@ function seedGlobalConfigIfMissing() {
   if (!hasContent) upsertConfig(CONFIG_KEYS.content, DEFAULT_GLOBAL_CONTENT);
   if (!hasPromotions) upsertConfig(CONFIG_KEYS.promotions, DEFAULT_GLOBAL_PROMOTIONS);
   if (!hasProducts) upsertConfig(CONFIG_KEYS.products, DEFAULT_GLOBAL_PRODUCTS);
+}
+
+function maybeArchiveAndResetDailyOrders() {
+  const todayKey = getMexicoCityDateKey();
+  const state = readDailyArchiveState();
+  const lastProcessedDate = state?.lastProcessedDate;
+
+  if (!lastProcessedDate) {
+    writeDailyArchiveState({ lastProcessedDate: todayKey });
+    return { archivedCount: 0, initialized: true, date: todayKey };
+  }
+
+  if (lastProcessedDate === todayKey) {
+    return { archivedCount: 0, skipped: true, date: todayKey };
+  }
+
+  const archived = archiveOrdersForDate(lastProcessedDate);
+  writeDailyArchiveState({ lastProcessedDate: todayKey });
+  return { ...archived, date: todayKey, archivedDate: lastProcessedDate };
 }
 
 function initDatabase() {
@@ -199,6 +311,23 @@ function initDatabase() {
       total REAL NOT NULL DEFAULT 0,
       estado TEXT NOT NULL DEFAULT 'Pendiente',
       fecha TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS pedidos_archivados (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fecha TEXT NOT NULL,
+      clienteToken TEXT NOT NULL DEFAULT '',
+      cliente TEXT NOT NULL,
+      telefono TEXT,
+      direccion TEXT,
+      tipoEntrega TEXT NOT NULL,
+      productos TEXT NOT NULL,
+      subtotal REAL NOT NULL DEFAULT 0,
+      envio REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      estado TEXT NOT NULL DEFAULT 'Pendiente',
+      creado_en TEXT NOT NULL,
+      origen_pedido_id INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS calculadora_calculos (
@@ -268,3 +397,5 @@ if (require.main === module) {
 }
 
 module.exports = initDatabase;
+module.exports.initDatabase = initDatabase;
+module.exports.maybeArchiveAndResetDailyOrders = maybeArchiveAndResetDailyOrders;

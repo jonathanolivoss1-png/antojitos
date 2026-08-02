@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
+const { maybeArchiveAndResetDailyOrders } = require('../database/init');
 const { requireAuth } = require('../middleware/auth');
 const {
   attachAdminEventClient,
@@ -16,7 +17,6 @@ const CONTENT_KEY = 'site_content_v1';
 const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
 const SOLD_PRODUCTS_SEPARATED_KEY = 'sold_products_separated_v1';
 const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
-const SOLD_PRODUCT_STATUSES = ['Confirmado', 'Preparando', 'En camino', 'Entregado'];
 
 function parseProductos(raw) {
   try {
@@ -698,6 +698,7 @@ router.put('/promotions', requireAuth, (req, res) => {
   try {
     const promotions = normalizePromotions(req.body?.promotions);
     writePromotions(promotions);
+    broadcastPublicSettingsEvent('promotions-updated', { ts: Date.now() });
     return res.json({ ok: true, promotions });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron guardar promociones' });
@@ -716,6 +717,7 @@ router.put('/content', requireAuth, (req, res) => {
   try {
     const content = normalizeContent(req.body?.content);
     writeContent(content);
+    broadcastPublicSettingsEvent('content-updated', { ts: Date.now() });
     return res.json({ ok: true, content });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo guardar el contenido' });
@@ -756,18 +758,33 @@ router.get('/sold-products', requireAuth, (req, res) => {
 
     const startRange = buildUtcRangeFromDateKey(startDate, MEXICO_CITY_TZ_OFFSET_MINUTES);
     const endRange = buildUtcRangeFromDateKey(endDate, MEXICO_CITY_TZ_OFFSET_MINUTES);
-    const placeholders = SOLD_PRODUCT_STATUSES.map(() => '?').join(', ');
+
     const rows = db.prepare(`
-      SELECT productos
+      SELECT productos, fecha
       FROM pedidos
       WHERE fecha >= ?
         AND fecha < ?
-        AND estado IN (${placeholders})
+        AND estado != 'Cancelado'
       ORDER BY datetime(fecha) DESC, id DESC
-    `).all(startRange.startIso, endRange.endIso, ...SOLD_PRODUCT_STATUSES);
+    `).all(startRange.startIso, endRange.endIso);
+
+    const archivedRows = db.prepare(`
+      SELECT productos, fecha
+      FROM pedidos_archivados
+      WHERE fecha >= ?
+        AND fecha <= ?
+        AND estado != 'Cancelado'
+      ORDER BY datetime(fecha) DESC, id DESC
+    `).all(startDate, endDate);
+
+    const allRows = [...rows, ...archivedRows];
 
     const aggregate = new Map();
-    rows.forEach(row => {
+    allRows.forEach(row => {
+      const rawDate = String(row?.fecha || '').slice(0, 10);
+      const shouldInclude = (!rawDate || rawDate >= startDate) && (!rawDate || rawDate <= endDate);
+      if (!shouldInclude) return;
+
       parseProductos(row.productos).forEach(item => {
         const name = sanitizeText(item?.name || '', 140);
         const quantity = Math.max(0, Number(item?.qty || 0));
@@ -849,6 +866,7 @@ router.put('/products', requireAuth, (req, res) => {
 
 router.get('/stats', requireAuth, (req, res) => {
   try {
+    maybeArchiveAndResetDailyOrders();
     const date = sanitizeText(req.query?.date || '', 10);
     const tzOffset = Number(req.query?.tzOffset);
     const effectiveDate = isValidDateKey(date) ? date : new Date().toISOString().slice(0, 10);
