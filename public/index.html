@@ -2075,7 +2075,8 @@
       pendingOrder: 'anafres_pending_order_v1',
       clientToken: 'anafres_client_token_v1',
       orderRefresh: 'anafres_order_refresh_v1',
-      productsRefresh: 'anafres_products_refresh_v1'
+      productsRefresh: 'anafres_products_refresh_v1',
+      globalSettingsRefresh: 'anafres_global_settings_refresh_v1'
     };
 
     const menuBtn = document.getElementById('menuBtn');
@@ -2421,7 +2422,7 @@
       if (globalSyncTimer) {
         clearInterval(globalSyncTimer);
       }
-      globalSyncTimer = setInterval(() => syncGlobalSettingsFromApi({ includeProducts: false }), GLOBAL_SYNC_INTERVAL_MS);
+      globalSyncTimer = setInterval(() => syncGlobalSettingsFromApi({ includeProducts: true }), GLOBAL_SYNC_INTERVAL_MS);
     }
 
     function startOrderHistoryRealtimeSync() {
@@ -2447,10 +2448,10 @@
         syncGlobalSettingsFromApi({ includeProducts: true });
       });
       globalSettingsStream.addEventListener('promotions-updated', () => {
-        syncGlobalSettingsFromApi({ includeProducts: false });
+        syncGlobalSettingsFromApi({ includeProducts: true });
       });
       globalSettingsStream.addEventListener('content-updated', () => {
-        syncGlobalSettingsFromApi({ includeProducts: false });
+        syncGlobalSettingsFromApi({ includeProducts: true });
       });
     }
 
@@ -2459,7 +2460,7 @@
       renderStaticContent();
       renderPromotions();
       renderMenu();
-      syncGlobalSettingsFromApi({ includeProducts: false });
+      syncGlobalSettingsFromApi({ includeProducts: true });
     }
 
     function toggleMenu() {
@@ -3393,7 +3394,7 @@
     });
 
     window.addEventListener('storage', event => {
-      if (event.key === STORAGE_KEYS.productsRefresh) {
+      if (event.key === STORAGE_KEYS.productsRefresh || event.key === STORAGE_KEYS.globalSettingsRefresh) {
         syncGlobalSettingsFromApi({ includeProducts: true });
         return;
       }
