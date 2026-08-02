@@ -2,28 +2,17 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
+const {
+  attachAdminEventClient,
+  attachPublicSettingsClient,
+  broadcastPublicSettingsEvent
+} = require('../realtime/events');
 
 const router = express.Router();
 const PROMOS_KEY = 'site_promotions_v1';
 const PRODUCTS_KEY = 'site_products_v1';
 const CONTENT_KEY = 'site_content_v1';
 const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
-const publicSettingsClients = new Set();
-
-function sendSseEvent(res, event, data) {
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-function broadcastPublicSettingsEvent(event, payload) {
-  for (const client of publicSettingsClients) {
-    try {
-      sendSseEvent(client, event, payload);
-    } catch {
-      publicSettingsClients.delete(client);
-    }
-  }
-}
 
 function parseProductos(raw) {
   try {
@@ -41,6 +30,34 @@ function sanitizeNumber(value) {
 function sanitizeText(value, maxLength = 220) {
   if (typeof value !== 'string') return '';
   return value.replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, maxLength);
+}
+
+function isValidDateKey(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function buildUtcRangeFromDateKey(dateKey, tzOffsetMinutes) {
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  const safeOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+  const startUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + safeOffset * 60 * 1000;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+
+  return {
+    startIso: new Date(startUtcMs).toISOString(),
+    endIso: new Date(endUtcMs).toISOString()
+  };
+}
+
+function buildUtcMonthRangeFromDateKey(dateKey, tzOffsetMinutes) {
+  const [year, month] = String(dateKey).split('-').map(Number);
+  const safeOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+  const startUtcMs = Date.UTC(year, month - 1, 1, 0, 0, 0, 0) + safeOffset * 60 * 1000;
+  const endUtcMs = Date.UTC(year, month, 1, 0, 0, 0, 0) + safeOffset * 60 * 1000;
+
+  return {
+    startIso: new Date(startUtcMs).toISOString(),
+    endIso: new Date(endUtcMs).toISOString()
+  };
 }
 
 function readConfigJson(key) {
@@ -580,31 +597,11 @@ router.get('/public-settings', (req, res) => {
 });
 
 router.get('/public-settings/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
+  attachPublicSettingsClient(req, res);
+});
 
-  if (typeof res.flushHeaders === 'function') {
-    res.flushHeaders();
-  }
-
-  publicSettingsClients.add(res);
-  sendSseEvent(res, 'connected', { ok: true, ts: Date.now() });
-
-  const keepAliveTimer = setInterval(() => {
-    try {
-      res.write(': keep-alive\n\n');
-    } catch {
-      clearInterval(keepAliveTimer);
-      publicSettingsClients.delete(res);
-    }
-  }, 25000);
-
-  req.on('close', () => {
-    clearInterval(keepAliveTimer);
-    publicSettingsClients.delete(res);
-  });
+router.get('/events', requireAuth, (req, res) => {
+  attachAdminEventClient(req, res);
 });
 
 router.get('/promotions', requireAuth, (req, res) => {
@@ -672,33 +669,43 @@ router.put('/products', requireAuth, (req, res) => {
 
 router.get('/stats', requireAuth, (req, res) => {
   try {
-    const totalPedidos = db.prepare('SELECT COUNT(*) AS count FROM pedidos').get().count;
-    const pendientes = db.prepare("SELECT COUNT(*) AS count FROM pedidos WHERE estado IN ('Pendiente', 'Confirmado', 'Preparando', 'En camino')").get().count;
-    const entregados = db.prepare("SELECT COUNT(*) AS count FROM pedidos WHERE estado = 'Entregado'").get().count;
+    const date = sanitizeText(req.query?.date || '', 10);
+    const tzOffset = Number(req.query?.tzOffset);
+    const effectiveDate = isValidDateKey(date) ? date : new Date().toISOString().slice(0, 10);
+    const dayRange = buildUtcRangeFromDateKey(effectiveDate, tzOffset);
+    const monthRange = buildUtcMonthRangeFromDateKey(effectiveDate, tzOffset);
+
+    const totalPedidos = db.prepare('SELECT COUNT(*) AS count FROM pedidos WHERE fecha >= ? AND fecha < ?').get(dayRange.startIso, dayRange.endIso).count;
+    const pendientes = db.prepare("SELECT COUNT(*) AS count FROM pedidos WHERE fecha >= ? AND fecha < ? AND estado IN ('Pendiente', 'Confirmado', 'Preparando', 'En camino')").get(dayRange.startIso, dayRange.endIso).count;
+    const entregados = db.prepare("SELECT COUNT(*) AS count FROM pedidos WHERE fecha >= ? AND fecha < ? AND estado = 'Entregado'").get(dayRange.startIso, dayRange.endIso).count;
 
     const ventasHoy = db.prepare(`
       SELECT COALESCE(SUM(total), 0) AS total
       FROM pedidos
-      WHERE DATE(fecha) = DATE('now', 'localtime')
+      WHERE fecha >= ?
+        AND fecha < ?
         AND estado != 'Cancelado'
-    `).get().total;
+    `).get(dayRange.startIso, dayRange.endIso).total;
 
     const ventasMes = db.prepare(`
       SELECT COALESCE(SUM(total), 0) AS total
       FROM pedidos
-      WHERE STRFTIME('%Y-%m', fecha) = STRFTIME('%Y-%m', 'now', 'localtime')
+      WHERE fecha >= ?
+        AND fecha < ?
         AND estado != 'Cancelado'
-    `).get().total;
+    `).get(monthRange.startIso, monthRange.endIso).total;
 
     const totalVendido = db.prepare(`
       SELECT COALESCE(SUM(total), 0) AS total
       FROM pedidos
-      WHERE estado != 'Cancelado'
-    `).get().total;
+      WHERE fecha >= ?
+        AND fecha < ?
+        AND estado != 'Cancelado'
+    `).get(dayRange.startIso, dayRange.endIso).total;
 
     const promedioPedido = totalPedidos > 0 ? Number(totalVendido) / Number(totalPedidos) : 0;
 
-    const rows = db.prepare("SELECT productos FROM pedidos WHERE estado != 'Cancelado'").all();
+    const rows = db.prepare('SELECT productos FROM pedidos WHERE fecha >= ? AND fecha < ? AND estado != \'Cancelado\'').all(dayRange.startIso, dayRange.endIso);
     const productCount = new Map();
 
     rows.forEach(row => {

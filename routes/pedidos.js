@@ -2,6 +2,7 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
+const { broadcastAdminEvent } = require('../realtime/events');
 
 const router = express.Router();
 
@@ -164,6 +165,7 @@ router.post('/', (req, res) => {
     );
 
     const created = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(result.lastInsertRowid);
+    broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'created' });
     return res.status(201).json({ ok: true, pedido: mapPedido(created) });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo guardar el pedido' });
@@ -176,6 +178,25 @@ router.get('/', requireAuth, (req, res) => {
     return res.json({ ok: true, pedidos: rows.map(mapPedido) });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron listar los pedidos' });
+  }
+});
+
+router.get('/day', requireAuth, (req, res) => {
+  try {
+    const date = sanitizeText(req.query?.date || '', 10);
+    const tzOffset = Number(req.query?.tzOffset);
+    if (!isValidDateKey(date)) {
+      return res.status(400).json({ ok: false, message: 'Fecha invalida. Usa formato YYYY-MM-DD' });
+    }
+
+    const range = buildUtcRangeFromDateKey(date, tzOffset);
+    const rows = db
+      .prepare('SELECT * FROM pedidos WHERE fecha >= ? AND fecha < ? ORDER BY datetime(fecha) DESC, id DESC')
+      .all(range.startIso, range.endIso);
+
+    return res.json({ ok: true, date, pedidos: rows.map(mapPedido) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudieron listar los pedidos del dia' });
   }
 });
 
@@ -262,6 +283,8 @@ router.delete('/day', requireAuth, (req, res) => {
       db.prepare("DELETE FROM sqlite_sequence WHERE name = 'pedidos'").run();
     }
 
+    broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'deleted-day' });
+
     return res.json({
       ok: true,
       deletedCount: Number(result.changes || 0),
@@ -333,6 +356,7 @@ router.post('/day/restore', requireAuth, (req, res) => {
     });
 
     tx(prepared);
+    broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'restored-day' });
 
     return res.json({ ok: true, restoredCount: prepared.length });
   } catch (error) {
@@ -376,6 +400,7 @@ router.put('/:id', requireAuth, (req, res) => {
     }
 
     const row = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(id);
+    broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'status-updated' });
     return res.json({ ok: true, pedido: mapPedido(row) });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo actualizar el pedido' });
@@ -399,6 +424,7 @@ router.delete('/:id', requireAuth, (req, res) => {
       db.prepare("DELETE FROM sqlite_sequence WHERE name = 'pedidos'").run();
     }
 
+    broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'deleted' });
     return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo eliminar el pedido' });

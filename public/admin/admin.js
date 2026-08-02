@@ -39,6 +39,7 @@
   let currentOrders = [];
   let calculatorProducts = [];
   let refreshTimer = null;
+  let adminEventsStream = null;
   let dashboardRevenue = 0;
   let manualIncomeValue = 0;
   let calculatorDraftUpdatedAt = 0;
@@ -595,9 +596,11 @@
 
   async function loadDashboardData() {
     try {
+      const date = getSelectedDateKey();
+      const tzOffset = new Date().getTimezoneOffset();
       const [statsResult, pedidosResult] = await Promise.all([
-        api('/api/admin/stats'),
-        api('/api/pedidos')
+        api(`/api/admin/stats?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`),
+        api(`/api/pedidos/day?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`)
       ]);
 
       const stats = statsResult.stats || {};
@@ -615,6 +618,7 @@
     } catch (error) {
       if (error.status === 401) {
         setAuthenticated(false);
+        stopAdminEventsStream();
         stopRefresh();
         return;
       }
@@ -802,6 +806,27 @@
     }
   }
 
+  function startAdminEventsStream() {
+    if (typeof window.EventSource !== 'function') return;
+
+    if (adminEventsStream) {
+      adminEventsStream.close();
+    }
+
+    adminEventsStream = new EventSource('/api/admin/events');
+    adminEventsStream.addEventListener('orders-updated', () => {
+      if (!adminApp.classList.contains('hidden')) {
+        loadDashboardData();
+      }
+    });
+  }
+
+  function stopAdminEventsStream() {
+    if (!adminEventsStream) return;
+    adminEventsStream.close();
+    adminEventsStream = null;
+  }
+
   async function checkSession() {
     try {
       const result = await api('/api/session', { method: 'GET' });
@@ -811,11 +836,14 @@
       if (isAuthed) {
         await loadDashboardData();
         await hydrateCalculatorDraftFromServer();
+        startAdminEventsStream();
         startRefresh();
       } else {
+        stopAdminEventsStream();
         stopRefresh();
       }
     } catch {
+      stopAdminEventsStream();
       setAuthenticated(false);
       stopRefresh();
     }
@@ -845,6 +873,7 @@
       setAuthenticated(true);
       await loadDashboardData();
       await hydrateCalculatorDraftFromServer();
+      startAdminEventsStream();
       startRefresh();
       showToast('Sesión iniciada');
     } catch {
@@ -863,6 +892,7 @@
     }
 
     setAuthenticated(false);
+    stopAdminEventsStream();
     stopRefresh();
     showToast('Sesión cerrada');
   }
@@ -927,6 +957,12 @@
   function bindEvents() {
     if (dayFilterInput && !dayFilterInput.value) {
       dayFilterInput.value = getTodayDateKey();
+    }
+
+    if (dayFilterInput) {
+      dayFilterInput.addEventListener('change', () => {
+        loadDashboardData();
+      });
     }
 
     if (calculatorAddProductBtn) {
