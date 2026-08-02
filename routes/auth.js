@@ -1,64 +1,237 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const db = require('../database/db');
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const pgPool = require("../postgres");
 
 const router = express.Router();
 
 function sanitizeText(value, maxLength = 120) {
-  if (typeof value !== 'string') return '';
-  return value.trim().replace(/\s+/g, ' ').slice(0, maxLength);
+  if (typeof value !== "string") return "";
+
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, maxLength);
 }
 
-router.post('/login', async (req, res) => {
+/*
+ * Crea la tabla de usuarios en PostgreSQL
+ * y verifica que exista el usuario administrador.
+ */
+async function initializeUsersTable() {
+  if (!pgPool) {
+    throw new Error(
+      "PostgreSQL no está disponible. Revisa DATABASE_URL."
+    );
+  }
+
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id BIGSERIAL PRIMARY KEY,
+      usuario VARCHAR(60) NOT NULL UNIQUE,
+      password TEXT NOT NULL
+    )
+  `);
+
+  const adminUser = "admin";
+  const adminPassword =
+    process.env.ADMIN_PASSWORD ||
+    process.env.ADMIN_PASS;
+
+  if (!adminPassword) {
+    throw new Error(
+      "Falta la variable ADMIN_PASSWORD"
+    );
+  }
+
+  const result = await pgPool.query(
+    `
+      SELECT id, password
+      FROM usuarios
+      WHERE usuario = $1
+      LIMIT 1
+    `,
+    [adminUser]
+  );
+
+  const existingUser = result.rows[0];
+
+  if (!existingUser) {
+    const passwordHash = await bcrypt.hash(
+      adminPassword,
+      10
+    );
+
+    await pgPool.query(
+      `
+        INSERT INTO usuarios (usuario, password)
+        VALUES ($1, $2)
+      `,
+      [adminUser, passwordHash]
+    );
+
+    console.log(
+      "Usuario admin creado en PostgreSQL."
+    );
+
+    return;
+  }
+
+  const passwordMatches = await bcrypt.compare(
+    adminPassword,
+    existingUser.password
+  );
+
+  if (!passwordMatches) {
+    const passwordHash = await bcrypt.hash(
+      adminPassword,
+      10
+    );
+
+    await pgPool.query(
+      `
+        UPDATE usuarios
+        SET password = $1
+        WHERE usuario = $2
+      `,
+      [passwordHash, adminUser]
+    );
+
+    console.log(
+      "Contraseña de admin actualizada en PostgreSQL."
+    );
+  }
+}
+
+let initializationError = null;
+
+const usersReady = initializeUsersTable().catch(
+  (error) => {
+    initializationError = error;
+
+    console.error(
+      "Error inicializando usuarios en PostgreSQL:",
+      error.message
+    );
+  }
+);
+
+router.post("/login", async (req, res) => {
   try {
-    const usuario = sanitizeText(req.body?.usuario, 60);
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    await usersReady;
+
+    if (initializationError) {
+      throw initializationError;
+    }
+
+    const usuario = sanitizeText(
+      req.body?.usuario,
+      60
+    );
+
+    const password =
+      typeof req.body?.password === "string"
+        ? req.body.password
+        : "";
 
     if (!usuario || !password) {
-      return res.status(400).json({ ok: false, message: 'Usuario y contrasena son obligatorios' });
+      return res.status(400).json({
+        ok: false,
+        message:
+          "Usuario y contraseña son obligatorios",
+      });
     }
 
-    const user = db.prepare('SELECT id, usuario, password FROM usuarios WHERE usuario = ?').get(usuario);
+    const result = await pgPool.query(
+      `
+        SELECT id, usuario, password
+        FROM usuarios
+        WHERE usuario = $1
+        LIMIT 1
+      `,
+      [usuario]
+    );
+
+    const user = result.rows[0];
+
     if (!user) {
-      return res.status(401).json({ ok: false, message: 'Credenciales invalidas' });
+      return res.status(401).json({
+        ok: false,
+        message: "Credenciales inválidas",
+      });
     }
 
-    const isValid = await bcrypt.compare(password, user.password);
+    const isValid = await bcrypt.compare(
+      password,
+      user.password
+    );
+
     if (!isValid) {
-      return res.status(401).json({ ok: false, message: 'Credenciales invalidas' });
+      return res.status(401).json({
+        ok: false,
+        message: "Credenciales inválidas",
+      });
     }
 
-    req.session.regenerate(error => {
+    req.session.regenerate((error) => {
       if (error) {
-        return res.status(500).json({ ok: false, message: 'No se pudo iniciar sesion' });
+        console.error(
+          "Error regenerando sesión:",
+          error
+        );
+
+        return res.status(500).json({
+          ok: false,
+          message: "No se pudo iniciar sesión",
+        });
       }
 
       req.session.user = {
         id: user.id,
-        usuario: user.usuario
+        usuario: user.usuario,
       };
 
-      return res.json({ ok: true, user: req.session.user });
+      return res.json({
+        ok: true,
+        user: req.session.user,
+      });
     });
   } catch (error) {
-    return res.status(500).json({ ok: false, message: 'Error interno de autenticacion' });
+    console.error(
+      "Error interno de autenticación:",
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message:
+        "Error interno de autenticación",
+    });
   }
 });
 
-router.post('/logout', (req, res) => {
+router.post("/logout", (req, res) => {
   if (!req.session) {
     return res.json({ ok: true });
   }
 
   req.session.destroy(() => {
-    res.clearCookie(process.env.SESSION_NAME || 'anafres.sid');
+    res.clearCookie(
+      process.env.SESSION_NAME ||
+        "anafres.sid"
+    );
+
     return res.json({ ok: true });
   });
 });
 
-router.get('/session', (req, res) => {
+router.get("/session", (req, res) => {
   const user = req.session?.user || null;
-  return res.json({ ok: true, authenticated: Boolean(user), user });
+
+  return res.json({
+    ok: true,
+    authenticated: Boolean(user),
+    user,
+  });
 });
 
 module.exports = router;
