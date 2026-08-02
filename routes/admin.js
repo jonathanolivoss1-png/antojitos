@@ -13,6 +13,8 @@ const PROMOS_KEY = 'site_promotions_v1';
 const PRODUCTS_KEY = 'site_products_v1';
 const CONTENT_KEY = 'site_content_v1';
 const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
+const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
+const SOLD_PRODUCT_STATUSES = ['Confirmado', 'Preparando', 'En camino', 'Entregado'];
 
 function parseProductos(raw) {
   try {
@@ -58,6 +60,20 @@ function buildUtcMonthRangeFromDateKey(dateKey, tzOffsetMinutes) {
     startIso: new Date(startUtcMs).toISOString(),
     endIso: new Date(endUtcMs).toISOString()
   };
+}
+
+function getMexicoCityDateKey(date = new Date()) {
+  const utcMillis = date.getTime();
+  const localMillis = utcMillis - MEXICO_CITY_TZ_OFFSET_MINUTES * 60 * 1000;
+  const localDate = new Date(localMillis);
+  const year = localDate.getUTCFullYear();
+  const month = String(localDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(localDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 function readConfigJson(key) {
@@ -653,6 +669,93 @@ router.get('/products', requireAuth, (req, res) => {
     return res.json({ ok: true, products: readProducts() });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron cargar productos' });
+  }
+});
+
+router.get('/sold-products', requireAuth, (req, res) => {
+  try {
+    const requestedStart = sanitizeText(req.query?.startDate || '', 10);
+    const requestedEnd = sanitizeText(req.query?.endDate || '', 10);
+    const todayKey = getMexicoCityDateKey();
+    const startDate = requestedStart || todayKey;
+    const endDate = requestedEnd || startDate;
+
+    if (!isValidDateKey(startDate) || !isValidDateKey(endDate)) {
+      return res.status(400).json({ ok: false, message: 'Fechas invalidas. Usa formato YYYY-MM-DD' });
+    }
+
+    if (startDate > endDate) {
+      return res.status(400).json({ ok: false, message: 'La fecha inicial no puede ser posterior a la fecha final' });
+    }
+
+    const startRange = buildUtcRangeFromDateKey(startDate, MEXICO_CITY_TZ_OFFSET_MINUTES);
+    const endRange = buildUtcRangeFromDateKey(endDate, MEXICO_CITY_TZ_OFFSET_MINUTES);
+    const placeholders = SOLD_PRODUCT_STATUSES.map(() => '?').join(', ');
+    const rows = db.prepare(`
+      SELECT productos
+      FROM pedidos
+      WHERE fecha >= ?
+        AND fecha < ?
+        AND estado IN (${placeholders})
+      ORDER BY datetime(fecha) DESC, id DESC
+    `).all(startRange.startIso, endRange.endIso, ...SOLD_PRODUCT_STATUSES);
+
+    const aggregate = new Map();
+    rows.forEach(row => {
+      parseProductos(row.productos).forEach(item => {
+        const name = sanitizeText(item?.name || '', 140);
+        const quantity = Math.max(0, Number(item?.qty || 0));
+        const unitPrice = Math.max(0, Number(item?.price || 0));
+        if (!name || quantity <= 0) return;
+
+        const totalAmount = roundMoney(quantity * unitPrice);
+        const current = aggregate.get(name) || {
+          name,
+          quantitySold: 0,
+          totalAmount: 0
+        };
+
+        current.quantitySold += quantity;
+        current.totalAmount = roundMoney(current.totalAmount + totalAmount);
+        aggregate.set(name, current);
+      });
+    });
+
+    const items = Array.from(aggregate.values())
+      .map(item => ({
+        name: item.name,
+        quantitySold: Number(item.quantitySold || 0),
+        unitPrice: item.quantitySold > 0 ? roundMoney(item.totalAmount / item.quantitySold) : 0,
+        totalAmount: roundMoney(item.totalAmount)
+      }))
+      .sort((a, b) => {
+        if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
+        return a.name.localeCompare(b.name, 'es');
+      });
+
+    const summary = items.reduce((acc, item) => {
+      acc.differentProducts += 1;
+      acc.totalUnits += Number(item.quantitySold || 0);
+      acc.totalRevenue = roundMoney(acc.totalRevenue + Number(item.totalAmount || 0));
+      return acc;
+    }, {
+      differentProducts: 0,
+      totalUnits: 0,
+      totalRevenue: 0
+    });
+
+    return res.json({
+      ok: true,
+      period: {
+        startDate,
+        endDate,
+        timezone: 'America/Mexico_City'
+      },
+      items,
+      summary
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudieron calcular los productos vendidos' });
   }
 });
 

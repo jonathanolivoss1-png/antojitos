@@ -14,6 +14,16 @@
   const exportDayCsvBtn = document.getElementById('exportDayCsvBtn');
   const deleteDayBtn = document.getElementById('deleteDayBtn');
   const dayFilterInput = document.getElementById('dayFilterInput');
+  const soldProductsTodayBtn = document.getElementById('soldProductsTodayBtn');
+  const soldProductsStartDateInput = document.getElementById('soldProductsStartDate');
+  const soldProductsEndDateInput = document.getElementById('soldProductsEndDate');
+  const soldProductsApplyBtn = document.getElementById('soldProductsApplyBtn');
+  const soldProductsResetBtn = document.getElementById('soldProductsResetBtn');
+  const soldProductsRangeLabel = document.getElementById('soldProductsRangeLabel');
+  const soldProductsTableBody = document.getElementById('soldProductsTableBody');
+  const soldProductsDifferentCount = document.getElementById('soldProductsDifferentCount');
+  const soldProductsUnitsCount = document.getElementById('soldProductsUnitsCount');
+  const soldProductsRevenueTotal = document.getElementById('soldProductsRevenueTotal');
 
   const detailModal = document.getElementById('orderDetailModal');
   const detailContent = document.getElementById('orderDetailContent');
@@ -40,6 +50,7 @@
   let calculatorProducts = [];
   let refreshTimer = null;
   let adminEventsStream = null;
+  let soldProductsFilter = null;
   let dashboardRevenue = 0;
   let manualIncomeValue = 0;
   let calculatorDraftUpdatedAt = 0;
@@ -331,6 +342,113 @@
       maximumFractionDigits: 2
     }).format(amount);
     return `$${formatted} MXN`;
+  }
+
+  function getMexicoCityDateKey(date = new Date()) {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Mexico_City',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = formatter.formatToParts(date);
+    const year = parts.find(part => part.type === 'year')?.value || '0000';
+    const month = parts.find(part => part.type === 'month')?.value || '01';
+    const day = parts.find(part => part.type === 'day')?.value || '01';
+    return `${year}-${month}-${day}`;
+  }
+
+  function formatDateKeyLabel(dateKey) {
+    const [year, month, day] = String(dateKey || '').split('-').map(Number);
+    if (!year || !month || !day) return dateKey || '-';
+    const utcDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+    return utcDate.toLocaleDateString('es-MX', {
+      timeZone: 'UTC',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+
+  function ensureSoldProductsFilter() {
+    const today = getMexicoCityDateKey();
+    if (!soldProductsFilter) {
+      soldProductsFilter = {
+        startDate: today,
+        endDate: today
+      };
+    }
+    return soldProductsFilter;
+  }
+
+  function syncSoldProductsFilterInputs() {
+    const filter = ensureSoldProductsFilter();
+    if (soldProductsStartDateInput) soldProductsStartDateInput.value = filter.startDate;
+    if (soldProductsEndDateInput) soldProductsEndDateInput.value = filter.endDate;
+  }
+
+  function renderSoldProducts(data) {
+    if (!soldProductsTableBody) return;
+
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const summary = data?.summary || {};
+    const period = data?.period || ensureSoldProductsFilter();
+
+    if (soldProductsRangeLabel) {
+      const sameDay = period.startDate === period.endDate;
+      soldProductsRangeLabel.textContent = sameDay
+        ? `Mostrando productos vendidos el ${formatDateKeyLabel(period.startDate)} en horario de Ciudad de México.`
+        : `Mostrando productos vendidos del ${formatDateKeyLabel(period.startDate)} al ${formatDateKeyLabel(period.endDate)} en horario de Ciudad de México.`;
+    }
+
+    if (!items.length) {
+      soldProductsTableBody.innerHTML = '<tr><td colspan="4">No se encontraron productos vendidos durante este periodo</td></tr>';
+    } else {
+      soldProductsTableBody.innerHTML = items.map(item => `
+        <tr>
+          <td>${escapeHtml(item.name || 'Producto')}</td>
+          <td>${Number(item.quantitySold || 0)}</td>
+          <td>${formatCurrency(item.unitPrice || 0)}</td>
+          <td>${formatCurrency(item.totalAmount || 0)}</td>
+        </tr>
+      `).join('');
+    }
+
+    if (soldProductsDifferentCount) soldProductsDifferentCount.textContent = Number(summary.differentProducts || 0);
+    if (soldProductsUnitsCount) soldProductsUnitsCount.textContent = Number(summary.totalUnits || 0);
+    if (soldProductsRevenueTotal) soldProductsRevenueTotal.textContent = formatCurrency(summary.totalRevenue || 0);
+  }
+
+  async function loadSoldProductsData() {
+    if (!soldProductsTableBody) return;
+
+    const filter = ensureSoldProductsFilter();
+    syncSoldProductsFilterInputs();
+
+    try {
+      const result = await api(`/api/admin/sold-products?startDate=${encodeURIComponent(filter.startDate)}&endDate=${encodeURIComponent(filter.endDate)}`);
+      renderSoldProducts(result);
+    } catch (error) {
+      if (error.status === 401) {
+        setAuthenticated(false);
+        stopAdminEventsStream();
+        stopRefresh();
+        return;
+      }
+
+      soldProductsTableBody.innerHTML = '<tr><td colspan="4">No se pudieron cargar los productos vendidos</td></tr>';
+      console.warn('No se pudieron cargar los productos vendidos', error);
+    }
+  }
+
+  function resetSoldProductsToToday() {
+    const today = getMexicoCityDateKey();
+    soldProductsFilter = {
+      startDate: today,
+      endDate: today
+    };
+    syncSoldProductsFilterInputs();
+    loadSoldProductsData();
   }
 
   function createCalculatorProduct() {
@@ -795,6 +913,7 @@
     refreshTimer = setInterval(() => {
       if (document.visibilityState === 'visible') {
         loadDashboardData();
+        loadSoldProductsData();
       }
     }, DASHBOARD_REFRESH_MS);
   }
@@ -817,6 +936,7 @@
     adminEventsStream.addEventListener('orders-updated', () => {
       if (!adminApp.classList.contains('hidden')) {
         loadDashboardData();
+        loadSoldProductsData();
       }
     });
   }
@@ -835,6 +955,7 @@
 
       if (isAuthed) {
         await loadDashboardData();
+        await loadSoldProductsData();
         await hydrateCalculatorDraftFromServer();
         startAdminEventsStream();
         startRefresh();
@@ -872,6 +993,7 @@
       if (adminPasswordInput) adminPasswordInput.value = '';
       setAuthenticated(true);
       await loadDashboardData();
+      await loadSoldProductsData();
       await hydrateCalculatorDraftFromServer();
       startAdminEventsStream();
       startRefresh();
@@ -962,6 +1084,40 @@
     if (dayFilterInput) {
       dayFilterInput.addEventListener('change', () => {
         loadDashboardData();
+      });
+    }
+
+    soldProductsFilter = {
+      startDate: getMexicoCityDateKey(),
+      endDate: getMexicoCityDateKey()
+    };
+    syncSoldProductsFilterInputs();
+
+    if (soldProductsTodayBtn) {
+      soldProductsTodayBtn.addEventListener('click', resetSoldProductsToToday);
+    }
+
+    if (soldProductsResetBtn) {
+      soldProductsResetBtn.addEventListener('click', resetSoldProductsToToday);
+    }
+
+    if (soldProductsApplyBtn) {
+      soldProductsApplyBtn.addEventListener('click', () => {
+        const startDate = String(soldProductsStartDateInput?.value || '').trim();
+        const endDate = String(soldProductsEndDateInput?.value || '').trim();
+
+        if (!startDate || !endDate) {
+          showToast('Debes seleccionar fecha inicial y fecha final', true);
+          return;
+        }
+
+        if (startDate > endDate) {
+          showToast('La fecha inicial no puede ser posterior a la fecha final', true);
+          return;
+        }
+
+        soldProductsFilter = { startDate, endDate };
+        loadSoldProductsData();
       });
     }
 
@@ -1070,6 +1226,7 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && !adminApp.classList.contains('hidden')) {
         loadDashboardData();
+        loadSoldProductsData();
         startRefresh();
       } else if (document.visibilityState !== 'visible') {
         stopRefresh();
@@ -1079,6 +1236,7 @@
     window.addEventListener('focus', () => {
       if (!adminApp.classList.contains('hidden')) {
         loadDashboardData();
+        loadSoldProductsData();
         if (calculatorDraftSyncRetryNeeded) {
           void pushCalculatorDraftToServer();
         }

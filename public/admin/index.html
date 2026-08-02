@@ -276,8 +276,13 @@
 
     .option-row {
       display: grid;
-      grid-template-columns: 1.4fr 0.7fr;
+      grid-template-columns: 1.4fr 0.7fr auto;
       gap: 0.7rem;
+    }
+
+    .options-actions {
+      display: flex;
+      justify-content: flex-end;
     }
 
     .order-items {
@@ -711,6 +716,46 @@
       </div>
     </section>
 
+    <section class="panel" id="soldProductsSection">
+      <div class="product-top">
+        <div>
+          <h2>Productos vendidos</h2>
+          <p class="panel-copy">Consulta los productos vendidos directamente desde los pedidos guardados, agrupados por nombre y periodo en horario de Ciudad de México.</p>
+        </div>
+        <div class="dashboard-tools sold-products-tools">
+          <button class="ghost-btn" id="soldProductsTodayBtn" type="button">Ventas de hoy</button>
+          <input id="soldProductsStartDate" type="date" aria-label="Fecha inicial de productos vendidos" />
+          <input id="soldProductsEndDate" type="date" aria-label="Fecha final de productos vendidos" />
+          <button class="btn" id="soldProductsApplyBtn" type="button">Consultar periodo</button>
+          <button class="ghost-btn" id="soldProductsResetBtn" type="button">Volver a hoy</button>
+        </div>
+      </div>
+
+      <p class="meta-note" id="soldProductsRangeLabel">Mostrando ventas del día actual en horario de Ciudad de México.</p>
+
+      <div class="admin-orders-table-wrap sold-products-table-wrap">
+        <table class="admin-orders-table sold-products-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Cantidad vendida</th>
+              <th>Precio unitario</th>
+              <th>Importe total</th>
+            </tr>
+          </thead>
+          <tbody id="soldProductsTableBody">
+            <tr><td colspan="4">Cargando productos vendidos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sold-products-summary" id="soldProductsSummary">
+        <article class="kpi-card"><span>Productos diferentes</span><strong id="soldProductsDifferentCount">0</strong></article>
+        <article class="kpi-card"><span>Unidades vendidas</span><strong id="soldProductsUnitsCount">0</strong></article>
+        <article class="kpi-card"><span>Total generado</span><strong id="soldProductsRevenueTotal">$0.00 MXN</strong></article>
+      </div>
+    </section>
+
     <section class="panel" id="calculatorSection">
       <div class="product-top">
         <div>
@@ -1034,8 +1079,15 @@
                   <label>Precio</label>
                   <input type="number" min="0" step="1" data-option-field="price" value="${option.price}" />
                 </div>
+                <div class="form-group">
+                  <label>Acción</label>
+                  <button class="danger-btn" type="button" data-action="remove-option" data-product-id="${product.id}" data-option-id="${option.id}">Quitar</button>
+                </div>
               </div>
             `).join('')}
+            <div class="options-actions">
+              <button class="ghost-btn" type="button" data-action="add-option" data-product-id="${product.id}">Agregar opción</button>
+            </div>
           </div>
         </article>
       `).join('');
@@ -1315,13 +1367,11 @@
         product.active = card.querySelector('[data-field="active"]').checked;
         product.available = card.querySelector('[data-field="available"]').checked;
 
-        card.querySelectorAll('.option-row').forEach(row => {
-          const optionId = row.dataset.optionId;
-          const option = (product.options || []).find(item => item.id === optionId);
-          if (!option) return;
-          option.name = row.querySelector('[data-option-field="name"]').value.trim();
-          option.price = Number(row.querySelector('[data-option-field="price"]').value) || 0;
-        });
+        product.options = Array.from(card.querySelectorAll('.option-row')).map(row => ({
+          id: String(row.dataset.optionId || `option-${Date.now()}`),
+          name: row.querySelector('[data-option-field="name"]').value.trim(),
+          price: Number(row.querySelector('[data-option-field="price"]').value) || 0
+        }));
       });
 
       try {
@@ -1396,7 +1446,6 @@
 
     function addProduct() {
       const productId = `product-${Date.now()}`;
-      const optionId = `option-${Date.now()}`;
 
       appState.products.push({
         id: productId,
@@ -1410,16 +1459,50 @@
         active: true,
         available: true,
         options: [
-          {
-            id: optionId,
-            name: 'Opcion 1',
-            price: 0
-          }
+          createProductOption()
         ]
       });
 
       renderProducts();
       showToast('Producto agregado. Guarda para publicarlo globalmente');
+    }
+
+    function createProductOption() {
+      return {
+        id: `option-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: 'Nueva opción',
+        price: 0
+      };
+    }
+
+    function addProductOption(productId) {
+      const product = appState.products.find(item => item.id === productId);
+      if (!product) return;
+
+      if (!Array.isArray(product.options)) {
+        product.options = [];
+      }
+
+      product.options.push(createProductOption());
+      persistState();
+      renderProducts();
+      showToast('Opción agregada. Guarda productos para publicarla globalmente');
+    }
+
+    function removeProductOption(productId, optionId) {
+      const product = appState.products.find(item => item.id === productId);
+      if (!product || !Array.isArray(product.options)) return;
+
+      const nextOptions = product.options.filter(option => option.id !== optionId);
+      if (!nextOptions.length) {
+        showToast('Cada producto debe conservar al menos una opción', true);
+        return;
+      }
+
+      product.options = nextOptions;
+      persistState();
+      renderProducts();
+      showToast('Opción eliminada. Guarda productos para publicarla globalmente');
     }
 
     function removePromotion(index) {
@@ -1504,6 +1587,23 @@
     });
 
     document.getElementById('productList').addEventListener('click', event => {
+      const addOptionButton = event.target.closest('[data-action="add-option"]');
+      if (addOptionButton) {
+        const productId = String(addOptionButton.dataset.productId || '');
+        if (!productId) return;
+        addProductOption(productId);
+        return;
+      }
+
+      const removeOptionButton = event.target.closest('[data-action="remove-option"]');
+      if (removeOptionButton) {
+        const productId = String(removeOptionButton.dataset.productId || '');
+        const optionId = String(removeOptionButton.dataset.optionId || '');
+        if (!productId || !optionId) return;
+        removeProductOption(productId, optionId);
+        return;
+      }
+
       const button = event.target.closest('[data-action="remove-product"]');
       if (!button) return;
 
