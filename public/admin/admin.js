@@ -1,5 +1,5 @@
 (function () {
-  const ESTADOS = ['Pendiente', 'Confirmado', 'Preparando', 'En camino', 'Entregado', 'Cancelado'];
+  const ESTADOS = ['Confirmado', 'Entregado', 'Cancelado'];
 
   const loginWrap = document.getElementById('loginWrap');
   const adminApp = document.getElementById('adminApp');
@@ -1167,7 +1167,7 @@
 
   async function saveStatusChange() {
     const orderId = Number(statusOrderIdInput?.value || 0);
-    const estado = statusSelect?.value || 'Pendiente';
+    const estado = statusSelect?.value || 'Confirmado';
 
     if (!orderId) return;
 
