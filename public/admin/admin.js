@@ -637,13 +637,85 @@
     return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback;
   }
 
+  function requestDeleteDayConfirmation(date) {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.position = 'fixed';
+      overlay.style.inset = '0';
+      overlay.style.background = 'rgba(0, 0, 0, 0.45)';
+      overlay.style.zIndex = '9999';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      overlay.style.padding = '1rem';
+
+      const card = document.createElement('div');
+      card.style.width = 'min(100%, 460px)';
+      card.style.background = '#fff';
+      card.style.borderRadius = '16px';
+      card.style.padding = '1rem';
+      card.style.boxShadow = '0 14px 30px rgba(0,0,0,0.18)';
+      card.innerHTML = `
+        <h3 style="margin:0 0 0.5rem 0;color:#a73319;">Confirmar eliminación del día</h3>
+        <p style="margin:0 0 0.75rem 0;line-height:1.5;color:#5c4036;">Vas a eliminar TODOS los pedidos del día <strong>${escapeHtml(date)}</strong>.</p>
+        <p style="margin:0 0 0.5rem 0;line-height:1.5;color:#5c4036;">Escribe <strong>ELIMINAR</strong> para continuar.</p>
+        <input id="deleteDayConfirmInput" type="text" placeholder="ELIMINAR" style="width:100%;border:1px solid #dccfc4;border-radius:10px;padding:0.65rem 0.75rem;" />
+        <p id="deleteDayConfirmError" style="min-height:1.1rem;margin:0.5rem 0 0 0;color:#a73319;font-weight:700;"></p>
+        <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.75rem;">
+          <button id="deleteDayCancelBtn" type="button" style="border:none;border-radius:999px;padding:0.6rem 0.9rem;background:#f1ece8;color:#4e342e;font-weight:800;cursor:pointer;">Cancelar</button>
+          <button id="deleteDayConfirmBtn" type="button" style="border:none;border-radius:999px;padding:0.6rem 0.9rem;background:#a73319;color:#fff;font-weight:800;cursor:pointer;">Eliminar pedidos</button>
+        </div>
+      `;
+
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      const input = card.querySelector('#deleteDayConfirmInput');
+      const error = card.querySelector('#deleteDayConfirmError');
+      const cancelBtn = card.querySelector('#deleteDayCancelBtn');
+      const confirmBtn = card.querySelector('#deleteDayConfirmBtn');
+
+      const cleanup = result => {
+        if (overlay.parentElement) {
+          overlay.parentElement.removeChild(overlay);
+        }
+        resolve(result);
+      };
+
+      const attemptConfirm = () => {
+        const value = String(input?.value || '').trim().toUpperCase();
+        if (value !== 'ELIMINAR') {
+          if (error) error.textContent = 'Debes escribir ELIMINAR exactamente.';
+          input?.focus();
+          return;
+        }
+        cleanup(true);
+      };
+
+      cancelBtn?.addEventListener('click', () => cleanup(false));
+      confirmBtn?.addEventListener('click', attemptConfirm);
+      overlay.addEventListener('click', event => {
+        if (event.target === overlay) cleanup(false);
+      });
+      input?.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          attemptConfirm();
+        }
+      });
+
+      input?.focus();
+    });
+  }
+
   async function deleteOrdersByDay() {
     const date = getSelectedDateKey();
-    const confirmed = window.confirm(`¿Eliminar todos los pedidos del día ${date}?`);
+    const tzOffset = new Date().getTimezoneOffset();
+    const confirmed = await requestDeleteDayConfirmation(date);
     if (!confirmed) return;
 
     try {
-      const result = await api(`/api/pedidos/day?date=${encodeURIComponent(date)}`, {
+      const result = await api(`/api/pedidos/day?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`, {
         method: 'DELETE'
       });
       showToast(`Se eliminaron ${Number(result.deletedCount || 0)} pedidos del día`);
@@ -950,7 +1022,8 @@
     if (exportDayCsvBtn) {
       exportDayCsvBtn.addEventListener('click', () => {
         const date = getSelectedDateKey();
-        window.location.href = `/api/pedidos/day/export/csv?date=${encodeURIComponent(date)}`;
+        const tzOffset = new Date().getTimezoneOffset();
+        window.location.href = `/api/pedidos/day/export/csv?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`;
       });
     }
 

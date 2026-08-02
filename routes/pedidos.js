@@ -18,6 +18,18 @@ function isValidDateKey(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function buildUtcRangeFromDateKey(dateKey, tzOffsetMinutes) {
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  const safeOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+  const startUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + safeOffset * 60 * 1000;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+
+  return {
+    startIso: new Date(startUtcMs).toISOString(),
+    endIso: new Date(endUtcMs).toISOString()
+  };
+}
+
 function sanitizeText(value, maxLength = 200) {
   if (typeof value !== 'string') return '';
   return value.trim().replace(/\s+/g, ' ').slice(0, maxLength);
@@ -186,13 +198,16 @@ router.get('/public', (req, res) => {
 router.get('/day/export/csv', requireAuth, (req, res) => {
   try {
     const date = sanitizeText(req.query?.date || '', 10);
+    const tzOffset = Number(req.query?.tzOffset);
     if (!isValidDateKey(date)) {
       return res.status(400).json({ ok: false, message: 'Fecha invalida. Usa formato YYYY-MM-DD' });
     }
 
+    const range = buildUtcRangeFromDateKey(date, tzOffset);
+
     const rows = db
-      .prepare('SELECT * FROM pedidos WHERE SUBSTR(fecha, 1, 10) = ? ORDER BY datetime(fecha) DESC, id DESC')
-      .all(date);
+      .prepare('SELECT * FROM pedidos WHERE fecha >= ? AND fecha < ? ORDER BY datetime(fecha) DESC, id DESC')
+      .all(range.startIso, range.endIso);
 
     const header = ['ID', 'Cliente', 'Telefono', 'Direccion', 'Entrega', 'Productos', 'Subtotal', 'Envio', 'Total', 'Estado', 'Fecha'];
     const csvRows = [header.join(',')];
@@ -229,15 +244,18 @@ router.get('/day/export/csv', requireAuth, (req, res) => {
 router.delete('/day', requireAuth, (req, res) => {
   try {
     const date = sanitizeText(req.query?.date || '', 10);
+    const tzOffset = Number(req.query?.tzOffset);
     if (!isValidDateKey(date)) {
       return res.status(400).json({ ok: false, message: 'Fecha invalida. Usa formato YYYY-MM-DD' });
     }
 
-    const rows = db
-      .prepare('SELECT * FROM pedidos WHERE SUBSTR(fecha, 1, 10) = ? ORDER BY datetime(fecha) DESC, id DESC')
-      .all(date);
+    const range = buildUtcRangeFromDateKey(date, tzOffset);
 
-    const result = db.prepare('DELETE FROM pedidos WHERE SUBSTR(fecha, 1, 10) = ?').run(date);
+    const rows = db
+      .prepare('SELECT * FROM pedidos WHERE fecha >= ? AND fecha < ? ORDER BY datetime(fecha) DESC, id DESC')
+      .all(range.startIso, range.endIso);
+
+    const result = db.prepare('DELETE FROM pedidos WHERE fecha >= ? AND fecha < ?').run(range.startIso, range.endIso);
 
     const remaining = db.prepare('SELECT id FROM pedidos LIMIT 1').get();
     if (!remaining) {
