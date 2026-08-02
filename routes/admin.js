@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const {
   attachAdminEventClient,
   attachPublicSettingsClient,
+  broadcastAdminEvent,
   broadcastPublicSettingsEvent
 } = require('../realtime/events');
 
@@ -13,6 +14,7 @@ const PROMOS_KEY = 'site_promotions_v1';
 const PRODUCTS_KEY = 'site_products_v1';
 const CONTENT_KEY = 'site_content_v1';
 const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
+const SOLD_PRODUCTS_SEPARATED_KEY = 'sold_products_separated_v1';
 const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
 const SOLD_PRODUCT_STATUSES = ['Confirmado', 'Preparando', 'En camino', 'Entregado'];
 
@@ -104,9 +106,36 @@ function normalizePromotions(value) {
       const text = sanitizeText(promo?.text || '', 420);
       const chip = sanitizeText(promo?.chip || 'Promo', 60);
       const active = Boolean(promo?.active);
+      const prices = normalizePromotionPrices(promo?.prices);
 
       if (!id || !title || !text) return null;
-      return { id, title, text, chip, active };
+      return {
+        id,
+        title,
+        text,
+        chip,
+        active,
+        ...(prices.length ? { prices } : {})
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizePromotionPrices(prices) {
+  if (!Array.isArray(prices)) return [];
+
+  return prices
+    .map((item, index) => {
+      const id = sanitizeText(item?.id || `promo-price-${index + 1}`, 90);
+      const label = sanitizeText(item?.label || item?.name || '', 120);
+      const price = Number(item?.price);
+      if (!id || !label || !Number.isFinite(price) || price < 0) return null;
+
+      return {
+        id,
+        label,
+        price: Math.round(price * 100) / 100
+      };
     })
     .filter(Boolean);
 }
@@ -135,6 +164,23 @@ function normalizeProductChoices(choices) {
     .map(choice => sanitizeText(choice, 80))
     .filter(Boolean);
   return clean.length ? clean : undefined;
+}
+
+function normalizeSoldProductName(value) {
+  return sanitizeText(value, 140)
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeSoldProductsSeparated(value) {
+  if (!Array.isArray(value)) return [];
+  const unique = new Set();
+  value.forEach(item => {
+    const normalized = normalizeSoldProductName(item);
+    if (normalized) unique.add(normalized);
+  });
+  return Array.from(unique.values()).slice(0, 500);
 }
 
 function normalizeContent(value) {
@@ -241,6 +287,26 @@ function writeContent(content) {
     VALUES (?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
   `).run(CONTENT_KEY, JSON.stringify(content));
+}
+
+function readSoldProductsSeparated() {
+  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(SOLD_PRODUCTS_SEPARATED_KEY);
+  if (!row?.valor) return [];
+  try {
+    return normalizeSoldProductsSeparated(JSON.parse(row.valor));
+  } catch {
+    return [];
+  }
+}
+
+function writeSoldProductsSeparated(names) {
+  const clean = normalizeSoldProductsSeparated(names);
+  db.prepare(`
+    INSERT INTO configuracion (clave, valor)
+    VALUES (?, ?)
+    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
+  `).run(SOLD_PRODUCTS_SEPARATED_KEY, JSON.stringify(clean));
+  return clean;
 }
 
 function normalizeCalculatorDraft(value) {
@@ -751,11 +817,22 @@ router.get('/sold-products', requireAuth, (req, res) => {
         endDate,
         timezone: 'America/Mexico_City'
       },
+      separatedNames: readSoldProductsSeparated(),
       items,
       summary
     });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron calcular los productos vendidos' });
+  }
+});
+
+router.put('/sold-products/separated', requireAuth, (req, res) => {
+  try {
+    const separatedNames = writeSoldProductsSeparated(req.body?.names);
+    broadcastAdminEvent('sold-products-separation-updated', { ts: Date.now() });
+    return res.json({ ok: true, separatedNames });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'No se pudo guardar la separación de productos vendidos' });
   }
 });
 

@@ -66,6 +66,37 @@
   text-align: right;
 }
 
+.sold-products-table td:nth-child(5),
+.sold-products-table th:nth-child(5) {
+  text-align: center;
+}
+
+.sold-products-split-head {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.sold-products-split-head h3 {
+  color: #8a4f39;
+  font-size: 1.1rem;
+}
+
+.sold-products-row-action {
+  border: 1px solid rgba(199, 62, 29, 0.15);
+  background: #fff6ec;
+  color: #7b4b37;
+  border-radius: 999px;
+  padding: 0.38rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sold-products-row-action:hover {
+  background: #fee8d8;
+}
+
 .sold-products-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

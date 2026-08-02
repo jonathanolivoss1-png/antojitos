@@ -280,6 +280,21 @@
       gap: 0.7rem;
     }
 
+    .promo-prices {
+      display: grid;
+      gap: 0.65rem;
+      margin-top: 0.25rem;
+      padding-top: 0.45rem;
+      border-top: 1px dashed #ead8c8;
+    }
+
+    .promo-price-row {
+      display: grid;
+      grid-template-columns: 1.2fr 0.7fr auto;
+      gap: 0.65rem;
+      align-items: end;
+    }
+
     .options-actions {
       display: flex;
       justify-content: flex-end;
@@ -728,6 +743,7 @@
           <input id="soldProductsEndDate" type="date" aria-label="Fecha final de productos vendidos" />
           <button class="btn" id="soldProductsApplyBtn" type="button">Consultar periodo</button>
           <button class="ghost-btn" id="soldProductsResetBtn" type="button">Volver a hoy</button>
+            <button class="ghost-btn" id="soldProductsClearSeparatedBtn" type="button">Limpiar separados</button>
         </div>
       </div>
 
@@ -741,10 +757,33 @@
               <th>Cantidad vendida</th>
               <th>Precio unitario</th>
               <th>Importe total</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody id="soldProductsTableBody">
-            <tr><td colspan="4">Cargando productos vendidos...</td></tr>
+            <tr><td colspan="5">Cargando productos vendidos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sold-products-split-head">
+        <h3>Sección separada personalizada</h3>
+        <p class="panel-copy">Mueve aquí los productos que quieras aislar. Esta separación se guarda para este panel.</p>
+      </div>
+
+      <div class="admin-orders-table-wrap sold-products-table-wrap">
+        <table class="admin-orders-table sold-products-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Cantidad vendida</th>
+              <th>Precio unitario</th>
+              <th>Importe total</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="soldProductsSeparatedTableBody">
+            <tr><td colspan="5">Aún no has separado productos</td></tr>
           </tbody>
         </table>
       </div>
@@ -753,6 +792,12 @@
         <article class="kpi-card"><span>Productos diferentes</span><strong id="soldProductsDifferentCount">0</strong></article>
         <article class="kpi-card"><span>Unidades vendidas</span><strong id="soldProductsUnitsCount">0</strong></article>
         <article class="kpi-card"><span>Total generado</span><strong id="soldProductsRevenueTotal">$0.00 MXN</strong></article>
+      </div>
+
+      <div class="sold-products-summary" id="soldProductsSeparatedSummary">
+        <article class="kpi-card"><span>Separados diferentes</span><strong id="soldProductsSeparatedDifferentCount">0</strong></article>
+        <article class="kpi-card"><span>Unidades separadas</span><strong id="soldProductsSeparatedUnitsCount">0</strong></article>
+        <article class="kpi-card"><span>Total separado</span><strong id="soldProductsSeparatedRevenueTotal">$0.00 MXN</strong></article>
       </div>
     </section>
 
@@ -901,8 +946,8 @@
           recommendations: ['🌮 Tacos de cecina', '🫓 Gorditas rellenas', '🍲 Pozole de la casa', '🥤 Bebidas refrescantes']
         },
         promotions: [
-          { id: 'promo-pozole', title: 'Fin de semana pozolero', text: 'Activa esta promo desde el panel para destacar tu pozole, pancita o cualquier antojo especial de temporada.', chip: 'Destacado', active: true },
-          { id: 'promo-envio', title: 'Pedidos listos por WhatsApp', text: 'El carrito y el historial guardan tu pedido para repetirlo más rápido y seguir el flujo actual de WhatsApp.', chip: 'Servicio', active: true }
+          { id: 'promo-pozole', title: 'Fin de semana pozolero', text: 'Activa esta promo desde el panel para destacar tu pozole, pancita o cualquier antojo especial de temporada.', chip: 'Destacado', active: true, prices: [{ id: 'promo-pozole-price', label: 'Precio promo', price: 80 }] },
+          { id: 'promo-envio', title: 'Pedidos listos por WhatsApp', text: 'El carrito y el historial guardan tu pedido para repetirlo más rápido y seguir el flujo actual de WhatsApp.', chip: 'Servicio', active: true, prices: [{ id: 'promo-envio-price', label: 'Envío', price: 0 }] }
         ],
         products: [
           { id: 'pozole', name: 'Pozole', description: 'Tradicional pozole de maíz acompañado de lechuga, cebolla, limón y tacos dorados.', image: 'https://images.unsplash.com/photo-1613514785940-daed07799d9b?auto=format&fit=crop&w=1200&q=80', category: 'antojitos', tag: 'Especialidad', note: 'Incluye guarniciones tradicionales.', priceLabel: '$80', active: true, available: true, options: [{ id: 'maciza', name: 'Puerco maciza', price: 80 }, { id: 'surtido', name: 'Puerco surtido', price: 80 }, { id: 'pollo', name: 'Pollo', price: 80 }] },
@@ -1015,6 +1060,28 @@
             <div class="form-group full">
               <label>Texto</label>
               <textarea data-field="text">${promo.text || ''}</textarea>
+            </div>
+            <div class="form-group full promo-prices">
+              <label>Opciones de precio</label>
+              ${Array.isArray(promo.prices) ? promo.prices.map(price => `
+                <div class="promo-price-row" data-price-id="${price.id}">
+                  <div class="form-group">
+                    <label>Concepto</label>
+                    <input type="text" data-price-field="label" value="${price.label || ''}" />
+                  </div>
+                  <div class="form-group">
+                    <label>Precio</label>
+                    <input type="number" min="0" step="0.01" data-price-field="price" value="${Number(price.price || 0)}" />
+                  </div>
+                  <div class="form-group">
+                    <label>Acción</label>
+                    <button class="danger-btn" type="button" data-action="remove-promo-price" data-index="${index}" data-price-id="${price.id}">Quitar</button>
+                  </div>
+                </div>
+              `).join('') : ''}
+              <div class="options-actions">
+                <button class="ghost-btn" type="button" data-action="add-promo-price" data-index="${index}">Agregar precio</button>
+              </div>
             </div>
             <label class="switch"><input type="checkbox" data-field="active" ${promo.active ? 'checked' : ''} /> Activa</label>
           </div>
@@ -1313,6 +1380,8 @@
     }
 
     async function savePromotions() {
+      let invalidPriceLabelInput = null;
+
       document.querySelectorAll('#promoList .promo-card').forEach(card => {
         const index = Number(card.dataset.index);
         const promo = appState.promotions[index];
@@ -1321,7 +1390,26 @@
         promo.chip = card.querySelector('[data-field="chip"]').value.trim();
         promo.text = card.querySelector('[data-field="text"]').value.trim();
         promo.active = card.querySelector('[data-field="active"]').checked;
+        promo.prices = Array.from(card.querySelectorAll('.promo-price-row')).map(row => {
+          const labelInput = row.querySelector('[data-price-field="label"]');
+          const label = labelInput.value.trim();
+          if (!label && !invalidPriceLabelInput) {
+            invalidPriceLabelInput = labelInput;
+          }
+
+          return {
+            id: String(row.dataset.priceId || `promo-price-${Date.now()}`),
+            label,
+            price: Number(row.querySelector('[data-price-field="price"]').value) || 0
+          };
+        });
       });
+
+      if (invalidPriceLabelInput) {
+        invalidPriceLabelInput.focus();
+        showToast('Cada precio de promoción debe incluir un concepto');
+        return;
+      }
 
       try {
         const response = await fetch('/api/admin/promotions', {
@@ -1439,9 +1527,37 @@
         title: 'Nueva promoción',
         text: 'Describe aquí la promoción.',
         chip: 'Promo',
-        active: true
+        active: true,
+        prices: [createPromotionPrice()]
       });
       renderPromotions();
+    }
+
+    function createPromotionPrice() {
+      return {
+        id: `promo-price-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        label: 'Concepto',
+        price: 0
+      };
+    }
+
+    function addPromotionPrice(index) {
+      const promo = appState.promotions[index];
+      if (!promo) return;
+      if (!Array.isArray(promo.prices)) {
+        promo.prices = [];
+      }
+      promo.prices.push(createPromotionPrice());
+      renderPromotions();
+      showToast('Precio agregado. Guarda promociones para publicarlo globalmente');
+    }
+
+    function removePromotionPrice(index, priceId) {
+      const promo = appState.promotions[index];
+      if (!promo || !Array.isArray(promo.prices)) return;
+      promo.prices = promo.prices.filter(item => item.id !== priceId);
+      renderPromotions();
+      showToast('Precio eliminado. Guarda promociones para publicarlo globalmente');
     }
 
     function addProduct() {
@@ -1581,6 +1697,18 @@
     document.getElementById('addPromoBtn').addEventListener('click', addPromotion);
 
     document.getElementById('promoList').addEventListener('click', event => {
+      const addPriceBtn = event.target.closest('[data-action="add-promo-price"]');
+      if (addPriceBtn) {
+        addPromotionPrice(Number(addPriceBtn.dataset.index));
+        return;
+      }
+
+      const removePriceBtn = event.target.closest('[data-action="remove-promo-price"]');
+      if (removePriceBtn) {
+        removePromotionPrice(Number(removePriceBtn.dataset.index), String(removePriceBtn.dataset.priceId || ''));
+        return;
+      }
+
       const button = event.target.closest('[data-action="remove-promo"]');
       if (!button) return;
       removePromotion(Number(button.dataset.index));

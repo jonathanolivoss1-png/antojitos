@@ -1347,6 +1347,23 @@
       text-transform: uppercase;
     }
 
+    .promo-prices-list {
+      display: grid;
+      gap: 0.35rem;
+      margin-top: 0.15rem;
+    }
+
+    .promo-price-item {
+      display: inline-flex;
+      width: fit-content;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      background: rgba(46,125,50,0.1);
+      color: var(--verde);
+      font-weight: 800;
+      font-size: 0.82rem;
+    }
+
     .platillo {
       position: relative;
     }
@@ -2163,14 +2180,20 @@
             title: 'Fin de semana pozolero',
             text: 'Activa esta promo desde el panel para destacar tu pozole, pancita o cualquier antojo especial de temporada.',
             chip: 'Destacado',
-            active: true
+            active: true,
+            prices: [
+              { id: 'promo-pozole-price', label: 'Precio promo', price: 80 }
+            ]
           },
           {
             id: 'promo-envio',
             title: 'Pedidos listos por WhatsApp',
             text: 'El carrito y el historial guardan tu pedido para repetirlo más rápido y seguir el flujo actual de WhatsApp.',
             chip: 'Servicio',
-            active: true
+            active: true,
+            prices: [
+              { id: 'promo-envio-price', label: 'Envío', price: 0 }
+            ]
           }
         ],
         products: [
@@ -2540,13 +2563,27 @@
         return;
       }
 
-      promoGrid.innerHTML = activePromotions.map(promo => `
+      promoGrid.innerHTML = activePromotions.map(promo => {
+        const prices = Array.isArray(promo.prices) ? promo.prices : [];
+        const pricesMarkup = prices.length
+          ? `
+              <div class="promo-prices-list">
+                ${prices.map(item => `
+                  <span class="promo-price-item">${item.label}: ${formatCurrency(item.price || 0)}</span>
+                `).join('')}
+              </div>
+            `
+          : '';
+
+        return `
         <article class="promo-card reveal">
           <span class="promo-chip">${promo.chip || 'Promo'}</span>
           <h3>${promo.title}</h3>
           <p>${promo.text}</p>
+          ${pricesMarkup}
         </article>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function buildMenuCard(product) {

@@ -21,9 +21,14 @@
   const soldProductsResetBtn = document.getElementById('soldProductsResetBtn');
   const soldProductsRangeLabel = document.getElementById('soldProductsRangeLabel');
   const soldProductsTableBody = document.getElementById('soldProductsTableBody');
+  const soldProductsSeparatedTableBody = document.getElementById('soldProductsSeparatedTableBody');
   const soldProductsDifferentCount = document.getElementById('soldProductsDifferentCount');
   const soldProductsUnitsCount = document.getElementById('soldProductsUnitsCount');
   const soldProductsRevenueTotal = document.getElementById('soldProductsRevenueTotal');
+  const soldProductsSeparatedDifferentCount = document.getElementById('soldProductsSeparatedDifferentCount');
+  const soldProductsSeparatedUnitsCount = document.getElementById('soldProductsSeparatedUnitsCount');
+  const soldProductsSeparatedRevenueTotal = document.getElementById('soldProductsSeparatedRevenueTotal');
+  const soldProductsClearSeparatedBtn = document.getElementById('soldProductsClearSeparatedBtn');
 
   const detailModal = document.getElementById('orderDetailModal');
   const detailContent = document.getElementById('orderDetailContent');
@@ -63,6 +68,72 @@
   let undoDeleteDayState = null;
   let undoDeleteDayTimer = null;
   let undoBanner = null;
+  let soldProductsSeparatedNames = new Set();
+
+  function normalizeSoldProductName(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  function applySeparatedNamesFromServer(names) {
+    const list = Array.isArray(names) ? names : [];
+    soldProductsSeparatedNames = new Set(list.map(normalizeSoldProductName).filter(Boolean));
+  }
+
+  function summarizeSoldItems(items) {
+    return (Array.isArray(items) ? items : []).reduce((acc, item) => {
+      acc.differentProducts += 1;
+      acc.totalUnits += Number(item?.quantitySold || 0);
+      acc.totalRevenue += Number(item?.totalAmount || 0);
+      return acc;
+    }, {
+      differentProducts: 0,
+      totalUnits: 0,
+      totalRevenue: 0
+    });
+  }
+
+  function updateSoldProductsSummary(summary, prefix) {
+    const differentEl = prefix === 'separated' ? soldProductsSeparatedDifferentCount : soldProductsDifferentCount;
+    const unitsEl = prefix === 'separated' ? soldProductsSeparatedUnitsCount : soldProductsUnitsCount;
+    const revenueEl = prefix === 'separated' ? soldProductsSeparatedRevenueTotal : soldProductsRevenueTotal;
+
+    if (differentEl) differentEl.textContent = Number(summary?.differentProducts || 0);
+    if (unitsEl) unitsEl.textContent = Number(summary?.totalUnits || 0);
+    if (revenueEl) revenueEl.textContent = formatCurrency(summary?.totalRevenue || 0);
+  }
+
+  function renderSoldProductsRows(targetBody, items, mode) {
+    if (!targetBody) return;
+    const isSeparated = mode === 'separated';
+    const emptyMessage = isSeparated
+      ? 'Aún no hay productos separados para este periodo'
+      : 'No se encontraron productos vendidos durante este periodo';
+
+    if (!items.length) {
+      targetBody.innerHTML = `<tr><td colspan="5">${emptyMessage}</td></tr>`;
+      return;
+    }
+
+    targetBody.innerHTML = items.map(item => `
+      <tr>
+        <td>${escapeHtml(item.name || 'Producto')}</td>
+        <td>${Number(item.quantitySold || 0)}</td>
+        <td>${formatCurrency(item.unitPrice || 0)}</td>
+        <td>${formatCurrency(item.totalAmount || 0)}</td>
+        <td>
+          <button
+            class="sold-products-row-action"
+            type="button"
+            data-action="${isSeparated ? 'restore-sold-product' : 'separate-sold-product'}"
+            data-product-name="${escapeHtml(item.name || '')}"
+          >${isSeparated ? 'Regresar' : 'Separar'}</button>
+        </td>
+      </tr>
+    `).join('');
+  }
 
   function readLegacyOrders() {
     try {
@@ -390,9 +461,23 @@
   function renderSoldProducts(data) {
     if (!soldProductsTableBody) return;
 
+    if (Array.isArray(data?.separatedNames)) {
+      applySeparatedNamesFromServer(data.separatedNames);
+    }
+
     const items = Array.isArray(data?.items) ? data.items : [];
-    const summary = data?.summary || {};
     const period = data?.period || ensureSoldProductsFilter();
+    const visibleItems = [];
+    const separatedItems = [];
+
+    items.forEach(item => {
+      const key = normalizeSoldProductName(item?.name);
+      if (key && soldProductsSeparatedNames.has(key)) {
+        separatedItems.push(item);
+      } else {
+        visibleItems.push(item);
+      }
+    });
 
     if (soldProductsRangeLabel) {
       const sameDay = period.startDate === period.endDate;
@@ -401,22 +486,11 @@
         : `Mostrando productos vendidos del ${formatDateKeyLabel(period.startDate)} al ${formatDateKeyLabel(period.endDate)} en horario de Ciudad de México.`;
     }
 
-    if (!items.length) {
-      soldProductsTableBody.innerHTML = '<tr><td colspan="4">No se encontraron productos vendidos durante este periodo</td></tr>';
-    } else {
-      soldProductsTableBody.innerHTML = items.map(item => `
-        <tr>
-          <td>${escapeHtml(item.name || 'Producto')}</td>
-          <td>${Number(item.quantitySold || 0)}</td>
-          <td>${formatCurrency(item.unitPrice || 0)}</td>
-          <td>${formatCurrency(item.totalAmount || 0)}</td>
-        </tr>
-      `).join('');
-    }
+    renderSoldProductsRows(soldProductsTableBody, visibleItems, 'default');
+    renderSoldProductsRows(soldProductsSeparatedTableBody, separatedItems, 'separated');
 
-    if (soldProductsDifferentCount) soldProductsDifferentCount.textContent = Number(summary.differentProducts || 0);
-    if (soldProductsUnitsCount) soldProductsUnitsCount.textContent = Number(summary.totalUnits || 0);
-    if (soldProductsRevenueTotal) soldProductsRevenueTotal.textContent = formatCurrency(summary.totalRevenue || 0);
+    updateSoldProductsSummary(summarizeSoldItems(visibleItems), 'default');
+    updateSoldProductsSummary(summarizeSoldItems(separatedItems), 'separated');
   }
 
   async function loadSoldProductsData() {
@@ -428,6 +502,7 @@
     try {
       const result = await api(`/api/admin/sold-products?startDate=${encodeURIComponent(filter.startDate)}&endDate=${encodeURIComponent(filter.endDate)}`);
       renderSoldProducts(result);
+      return result;
     } catch (error) {
       if (error.status === 401) {
         setAuthenticated(false);
@@ -436,8 +511,14 @@
         return;
       }
 
-      soldProductsTableBody.innerHTML = '<tr><td colspan="4">No se pudieron cargar los productos vendidos</td></tr>';
+      soldProductsTableBody.innerHTML = '<tr><td colspan="5">No se pudieron cargar los productos vendidos</td></tr>';
+      if (soldProductsSeparatedTableBody) {
+        soldProductsSeparatedTableBody.innerHTML = '<tr><td colspan="5">No se pudieron cargar los productos separados</td></tr>';
+      }
+      updateSoldProductsSummary({ differentProducts: 0, totalUnits: 0, totalRevenue: 0 }, 'default');
+      updateSoldProductsSummary({ differentProducts: 0, totalUnits: 0, totalRevenue: 0 }, 'separated');
       console.warn('No se pudieron cargar los productos vendidos', error);
+      return null;
     }
   }
 
@@ -449,6 +530,29 @@
     };
     syncSoldProductsFilterInputs();
     loadSoldProductsData();
+  }
+
+  async function saveSoldProductsSeparatedToServer() {
+    const result = await api('/api/admin/sold-products/separated', {
+      method: 'PUT',
+      body: JSON.stringify({ names: Array.from(soldProductsSeparatedNames.values()) })
+    });
+    applySeparatedNamesFromServer(result?.separatedNames || []);
+    return result;
+  }
+
+  async function setSoldProductSeparated(productName, shouldSeparate) {
+    const key = normalizeSoldProductName(productName);
+    if (!key) return;
+
+    if (shouldSeparate) {
+      soldProductsSeparatedNames.add(key);
+    } else {
+      soldProductsSeparatedNames.delete(key);
+    }
+
+    await saveSoldProductsSeparatedToServer();
+    await loadSoldProductsData();
   }
 
   function createCalculatorProduct() {
@@ -939,6 +1043,11 @@
         loadSoldProductsData();
       }
     });
+    adminEventsStream.addEventListener('sold-products-separation-updated', () => {
+      if (!adminApp.classList.contains('hidden')) {
+        loadSoldProductsData();
+      }
+    });
   }
 
   function stopAdminEventsStream() {
@@ -1118,6 +1227,53 @@
 
         soldProductsFilter = { startDate, endDate };
         loadSoldProductsData();
+      });
+    }
+
+    if (soldProductsTableBody) {
+      soldProductsTableBody.addEventListener('click', event => {
+        const button = event.target.closest('[data-action="separate-sold-product"]');
+        if (!button) return;
+        const name = String(button.dataset.productName || '');
+        (async () => {
+          try {
+            await setSoldProductSeparated(name, true);
+            showToast('Producto movido a la sección separada');
+          } catch (error) {
+            showToast(error.message || 'No se pudo separar el producto', true);
+          }
+        })();
+      });
+    }
+
+    if (soldProductsSeparatedTableBody) {
+      soldProductsSeparatedTableBody.addEventListener('click', event => {
+        const button = event.target.closest('[data-action="restore-sold-product"]');
+        if (!button) return;
+        const name = String(button.dataset.productName || '');
+        (async () => {
+          try {
+            await setSoldProductSeparated(name, false);
+            showToast('Producto regresado a la tabla principal');
+          } catch (error) {
+            showToast(error.message || 'No se pudo regresar el producto', true);
+          }
+        })();
+      });
+    }
+
+    if (soldProductsClearSeparatedBtn) {
+      soldProductsClearSeparatedBtn.addEventListener('click', () => {
+        (async () => {
+          try {
+            soldProductsSeparatedNames = new Set();
+            await saveSoldProductsSeparatedToServer();
+            await loadSoldProductsData();
+            showToast('Se limpió la sección separada');
+          } catch (error) {
+            showToast(error.message || 'No se pudo limpiar la sección separada', true);
+          }
+        })();
       });
     }
 
