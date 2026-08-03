@@ -1,8 +1,13 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const pgPool = require("../postgres");
+const db = require("../database/db");
 
 const router = express.Router();
+const DEFAULT_ADMIN_PASSWORD =
+  process.env.ADMIN_PASSWORD ||
+  process.env.ADMIN_PASS ||
+  "123456";
 
 function sanitizeText(value, maxLength = 120) {
   if (typeof value !== "string") return "";
@@ -14,63 +19,63 @@ function sanitizeText(value, maxLength = 120) {
 }
 
 /*
- * Crea la tabla de usuarios en PostgreSQL
- * y verifica que exista el usuario administrador.
+ * Crea la tabla de usuarios y verifica que exista el usuario administrador.
  */
 async function initializeUsersTable() {
-  if (!pgPool) {
-    throw new Error(
-      "PostgreSQL no está disponible. Revisa DATABASE_URL."
-    );
-  }
-
-  await pgPool.query(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id BIGSERIAL PRIMARY KEY,
-      usuario VARCHAR(60) NOT NULL UNIQUE,
-      password TEXT NOT NULL
-    )
-  `);
-
   const adminUser = "admin";
-  const adminPassword =
-    process.env.ADMIN_PASSWORD ||
-    process.env.ADMIN_PASS;
+  const adminPassword = DEFAULT_ADMIN_PASSWORD;
 
-  if (!adminPassword) {
-    throw new Error(
-      "Falta la variable ADMIN_PASSWORD"
-    );
+  if (!pgPool) {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL
+      )
+    `).run();
+  } else {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id BIGSERIAL PRIMARY KEY,
+        usuario VARCHAR(60) NOT NULL UNIQUE,
+        password TEXT NOT NULL
+      )
+    `);
   }
 
-  const result = await pgPool.query(
-    `
-      SELECT id, password
-      FROM usuarios
-      WHERE usuario = $1
-      LIMIT 1
-    `,
-    [adminUser]
-  );
+  const result = pgPool
+    ? await pgPool.query(
+        `
+          SELECT id, usuario, password
+          FROM usuarios
+          WHERE usuario = $1
+          LIMIT 1
+        `,
+        [adminUser]
+      )
+    : { rows: [db.prepare('SELECT id, usuario, password FROM usuarios WHERE usuario = ?').get(adminUser)] };
 
   const existingUser = result.rows[0];
 
   if (!existingUser) {
-    const passwordHash = await bcrypt.hash(
-      adminPassword,
-      10
-    );
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
 
-    await pgPool.query(
-      `
-        INSERT INTO usuarios (usuario, password)
-        VALUES ($1, $2)
-      `,
-      [adminUser, passwordHash]
-    );
+    if (pgPool) {
+      await pgPool.query(
+        `
+          INSERT INTO usuarios (usuario, password)
+          VALUES ($1, $2)
+        `,
+        [adminUser, passwordHash]
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO usuarios (usuario, password) VALUES (?, ?)`
+      ).run(adminUser, passwordHash);
+    }
 
     console.log(
-      "Usuario admin creado en PostgreSQL."
+      `Usuario admin creado en ${pgPool ? 'PostgreSQL' : 'SQLite'}.`
     );
 
     return;
@@ -82,22 +87,25 @@ async function initializeUsersTable() {
   );
 
   if (!passwordMatches) {
-    const passwordHash = await bcrypt.hash(
-      adminPassword,
-      10
-    );
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
 
-    await pgPool.query(
-      `
-        UPDATE usuarios
-        SET password = $1
-        WHERE usuario = $2
-      `,
-      [passwordHash, adminUser]
-    );
+    if (pgPool) {
+      await pgPool.query(
+        `
+          UPDATE usuarios
+          SET password = $1
+          WHERE usuario = $2
+        `,
+        [passwordHash, adminUser]
+      );
+    } else {
+      db.prepare(
+        `UPDATE usuarios SET password = ? WHERE usuario = ?`
+      ).run(passwordHash, adminUser);
+    }
 
     console.log(
-      "Contraseña de admin actualizada en PostgreSQL."
+      `Contraseña de admin actualizada en ${pgPool ? 'PostgreSQL' : 'SQLite'}.`
     );
   }
 }
@@ -141,15 +149,19 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const result = await pgPool.query(
-      `
-        SELECT id, usuario, password
-        FROM usuarios
-        WHERE usuario = $1
-        LIMIT 1
-      `,
-      [usuario]
-    );
+    const result = pgPool
+      ? await pgPool.query(
+          `
+            SELECT id, usuario, password
+            FROM usuarios
+            WHERE usuario = $1
+            LIMIT 1
+          `,
+          [usuario]
+        )
+      : { rows: [db.prepare(
+          `SELECT id, usuario, password FROM usuarios WHERE usuario = ?`
+        ).get(usuario)] };
 
     const user = result.rows[0];
 

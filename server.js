@@ -17,11 +17,7 @@ const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const initDatabase = require('./database/init');
 const authRoutes = require('./routes/auth');
-const { router: pedidosRoutes } = require('./routes/pedidos');
-
-const {
-  maybeArchiveAndResetDailyOrders
-} = require('./database/init');
+const { router: pedidosRoutes, maybeArchiveAndResetDailyOrders } = require('./routes/pedidos');
 const adminRoutes = require('./routes/admin');
 
 
@@ -36,52 +32,57 @@ app.use(express.urlencoded({ extended: true }));
 const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-initDatabase();
+initDatabase()
+  .then(() => {
+    maybeArchiveAndResetDailyOrders().catch(error => {
+      console.error('Error archivando pedidos inicial:', error);
+    });
 
-try {
-  maybeArchiveAndResetDailyOrders();
-} catch (error) {
-  console.error('Error archivando pedidos:', error);
-}
-setInterval(() => {
-  try {
-    maybeArchiveAndResetDailyOrders();
-  } catch (error) {
-    console.error('Error archivando pedidos:', error);
-  }
-}, 60 * 1000);
+    setInterval(() => {
+      maybeArchiveAndResetDailyOrders().catch(error => {
+        console.error('Error archivando pedidos:', error);
+      });
+    }, 60 * 1000);
+  })
+  .catch(error => {
+    console.error('Error inicializando la base de datos:', error);
+    process.exit(1);
+  });
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
-if (!process.env.SESSION_SECRET) {
+const sessionSecret = process.env.SESSION_SECRET || (isProduction ? null : 'dev-session-secret');
+if (!sessionSecret) {
   throw new Error('Falta la variable SESSION_SECRET');
 }
 
 app.set('trust proxy', 1);
 
-app.use(
-  session({
-    store: new PgSession({
-      pool: pgPool,
-      tableName: 'user_sessions',
-      createTableIfMissing: true
-    }),
+const sessionOptions = {
+  name: process.env.SESSION_NAME || 'anafres.sid',
+  secret: sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  }
+};
 
-    name: process.env.SESSION_NAME || 'anafres.sid',
-    secret: process.env.SESSION_SECRET,
+if (pgPool) {
+  sessionOptions.store = new PgSession({
+    pool: pgPool,
+    tableName: 'user_sessions',
+    createTableIfMissing: true
+  });
+} else {
+  console.warn('PostgreSQL no está disponible; usando MemoryStore para sesiones.');
+}
 
-    resave: false,
-    saveUninitialized: false,
-
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    }
-  })
-);
+app.use(session(sessionOptions));
 
 app.use('/api', authRoutes);
 app.use('/api/pedidos', pedidosRoutes);

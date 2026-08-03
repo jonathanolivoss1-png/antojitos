@@ -136,20 +136,11 @@
   }
 
   function readLegacyOrders() {
-    try {
-      const raw = localStorage.getItem(LEGACY_ORDERS_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    return [];
   }
 
   function writeLegacyOrders(orders) {
-    localStorage.setItem(LEGACY_ORDERS_KEY, JSON.stringify(orders));
-    if (typeof window.renderOrders === 'function') {
-      window.renderOrders();
-    }
+    return;
   }
 
   function buildCalculatorDraftPayload() {
@@ -218,7 +209,6 @@
 
         if (remoteUpdatedAt > localUpdatedAt) {
           applyCalculatorDraft(result.draft);
-          localStorage.setItem(CALCULATOR_DRAFT_KEY, JSON.stringify(result.draft));
           renderCalculatorProducts();
         } else {
           await pushCalculatorDraftToServer();
@@ -237,31 +227,13 @@
 
   function saveCalculatorDraft() {
     calculatorDraftUpdatedAt = Math.max(Date.now(), Number(calculatorDraftUpdatedAt || 0) + 1);
-    const payload = buildCalculatorDraftPayload();
-
-    try {
-      localStorage.setItem(CALCULATOR_DRAFT_KEY, JSON.stringify(payload));
-    } catch {
-      // Ignore quota/storage errors to keep calculator usable.
-    }
-
     void pushCalculatorDraftToServer();
   }
 
   function loadCalculatorDraft() {
-    try {
-      const raw = localStorage.getItem(CALCULATOR_DRAFT_KEY);
-      const parsed = raw ? JSON.parse(raw) : null;
-      applyCalculatorDraft(parsed || {});
-    } catch {
-      calculatorProducts = [createCalculatorProduct()];
-      manualIncomeValue = 0;
-      if (calculatorUseDashboardToggle) {
-        calculatorUseDashboardToggle.checked = true;
-      }
-    }
-
+    applyCalculatorDraft({ products: [createCalculatorProduct()], manualIncomeValue: 0, useDashboardRevenue: true, updatedAt: 0 });
     renderCalculatorProducts();
+    void hydrateCalculatorDraftFromServer();
   }
 
   function removeLegacyOrderById(orderId) {
@@ -273,21 +245,7 @@
   }
 
   function updateLegacyOrderStatus(orderId, estado) {
-    const previous = readLegacyOrders();
-    const mappedStatus = estado === 'Entregado' ? 'entregado' : 'preparando';
-    let changed = false;
-    const next = previous.map(item => {
-      if (String(item?.id) !== String(orderId)) return item;
-      changed = true;
-      return {
-        ...item,
-        status: mappedStatus
-      };
-    });
-
-    if (changed) {
-      writeLegacyOrders(next);
-    }
+    return;
   }
 
   function mapStatusToLegacy(estado) {
@@ -299,21 +257,7 @@
   }
 
   function syncLegacyOrdersFromApiOrders(orders) {
-    const mapped = (orders || []).map(order => ({
-      id: String(order.id),
-      createdAt: order.fecha || new Date().toISOString(),
-      deliveryType: order.tipoEntrega || '-',
-      total: Number(order.total || 0),
-      status: mapStatusToLegacy(order.estado),
-      items: Array.isArray(order.productos)
-        ? order.productos.map(item => ({
-            qty: Number(item.qty || 1),
-            name: item.name || 'Producto'
-          }))
-        : []
-    }));
-
-    writeLegacyOrders(mapped);
+    return;
   }
 
   function showToast(message, isError) {

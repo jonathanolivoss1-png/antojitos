@@ -1,10 +1,100 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
-const pgPool = require('../postgres');
+const rawPgPool = require('../postgres');
+const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
 const { broadcastAdminEvent } = require('../realtime/events');
 
 const router = express.Router();
+let pgPool = rawPgPool;
+const isPostgresReady = Boolean(rawPgPool);
+
+function normalizeSqlForSqlite(sql) {
+  return String(sql)
+    .replace(/::timestamptz/gi, '')
+    .replace(/::date/gi, '')
+    .replace(/::jsonb/gi, '')
+    .replace(/\bjsonb\b/gi, 'TEXT')
+    .replace(/\bNOW\(\)/gi, 'CURRENT_TIMESTAMP')
+    .replace(/\s+FOR UPDATE/gi, '')
+    .replace(/\$[0-9]+/g, '?')
+    .replace(/\btrue\b/gi, '1')
+    .replace(/\bfalse\b/gi, '0');
+}
+
+function getSqliteTableName(sql) {
+  const normalized = String(sql).trim();
+  const insertMatch = normalized.match(/INSERT\s+INTO\s+([\w]+)/i);
+  if (insertMatch) return insertMatch[1];
+  const updateMatch = normalized.match(/UPDATE\s+([\w]+)/i);
+  if (updateMatch) return updateMatch[1];
+  const deleteMatch = normalized.match(/DELETE\s+FROM\s+([\w]+)/i);
+  if (deleteMatch) return deleteMatch[1];
+  return null;
+}
+
+function sqliteQuery(sql, params = []) {
+  const normalizedSql = normalizeSqlForSqlite(sql);
+  const trimmed = normalizedSql.trim();
+  const firstWord = trimmed.split(/\s+/)[0]?.toUpperCase();
+  const hasReturning = /\bRETURNING\b/i.test(trimmed);
+  const cleanSql = hasReturning ? trimmed.replace(/\bRETURNING\b[\s\S]*$/i, '').trim() : trimmed;
+
+  if (firstWord === 'BEGIN' || firstWord === 'COMMIT' || firstWord === 'ROLLBACK') {
+    db.exec(cleanSql);
+    return { rows: [], rowCount: 0 };
+  }
+
+  const statement = db.prepare(cleanSql);
+
+  if (firstWord === 'SELECT' || firstWord === 'PRAGMA') {
+    return { rows: statement.all(...params) };
+  }
+
+  const info = statement.run(...params);
+  const result = { rows: [], rowCount: info.changes, lastInsertRowid: info.lastInsertRowid };
+
+  if (hasReturning) {
+    const table = getSqliteTableName(trimmed);
+    const rowId = firstWord === 'INSERT' ? info.lastInsertRowid : params[params.length - 1];
+    if (table && rowId) {
+      try {
+        const row = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(rowId);
+        if (row) result.rows = [row];
+      } catch {
+        // ignore fallback if select fails
+      }
+    }
+  }
+
+  return result;
+}
+
+function getSqliteClient() {
+  return {
+    query(sql, params = []) {
+      return sqliteQuery(sql, params);
+    },
+    release() {
+      // no-op for SQLite
+    }
+  };
+}
+
+function createSqlitePool() {
+  return {
+    query(sql, params = []) {
+      return Promise.resolve(sqliteQuery(sql, params));
+    },
+    connect() {
+      return Promise.resolve(getSqliteClient());
+    }
+  };
+}
+
+if (!pgPool) {
+  pgPool = createSqlitePool();
+}
 
 const ALLOWED_ESTADOS = new Set([
   'Pendiente',
@@ -163,46 +253,102 @@ function mapPedido(row) {
 }
 
 async function initializeOrdersTables() {
-  if (!pgPool) {
-    throw new Error('PostgreSQL no está disponible. Revisa DATABASE_URL.');
+  if (isPostgresReady) {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS configuracion (
+        clave TEXT PRIMARY KEY,
+        valor JSONB NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS pedidos (
+        id BIGSERIAL PRIMARY KEY,
+        cliente_token TEXT NOT NULL DEFAULT '',
+        cliente TEXT NOT NULL,
+        telefono TEXT,
+        direccion TEXT,
+        tipo_entrega TEXT NOT NULL,
+        productos JSONB NOT NULL DEFAULT '[]'::jsonb,
+        subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        envio NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        total NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        estado TEXT NOT NULL DEFAULT 'Pendiente',
+        fecha TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS pedidos_archivados (
+        id BIGSERIAL PRIMARY KEY,
+        fecha DATE NOT NULL,
+        cliente_token TEXT NOT NULL DEFAULT '',
+        cliente TEXT NOT NULL,
+        telefono TEXT,
+        direccion TEXT,
+        tipo_entrega TEXT NOT NULL,
+        productos JSONB NOT NULL DEFAULT '[]'::jsonb,
+        subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        envio NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        total NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        estado TEXT NOT NULL DEFAULT 'Pendiente',
+        creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        origen_pedido_id BIGINT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_pedidos_estado
+        ON pedidos (estado);
+
+      CREATE INDEX IF NOT EXISTS idx_pedidos_fecha
+        ON pedidos (fecha DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_token
+        ON pedidos (cliente_token);
+
+      CREATE INDEX IF NOT EXISTS idx_pedidos_archivados_fecha
+        ON pedidos_archivados (fecha DESC);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pedidos_archivados_origen
+        ON pedidos_archivados (origen_pedido_id)
+        WHERE origen_pedido_id IS NOT NULL;
+    `);
+
+    console.log('Tablas de pedidos verificadas en PostgreSQL.');
+    return;
   }
 
-  await pgPool.query(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS configuracion (
       clave TEXT PRIMARY KEY,
-      valor JSONB NOT NULL
+      valor TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS pedidos (
-      id BIGSERIAL PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       cliente_token TEXT NOT NULL DEFAULT '',
       cliente TEXT NOT NULL,
       telefono TEXT,
       direccion TEXT,
-      tipo_entrega TEXT NOT NULL,
-      productos JSONB NOT NULL DEFAULT '[]'::jsonb,
-      subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0,
-      envio NUMERIC(12, 2) NOT NULL DEFAULT 0,
-      total NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      tipo_entrega TEXT NOT NULL DEFAULT 'Pendiente',
+      productos TEXT NOT NULL DEFAULT '[]',
+      subtotal REAL NOT NULL DEFAULT 0,
+      envio REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
       estado TEXT NOT NULL DEFAULT 'Pendiente',
-      fecha TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      fecha TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS pedidos_archivados (
-      id BIGSERIAL PRIMARY KEY,
-      fecha DATE NOT NULL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fecha TEXT NOT NULL,
       cliente_token TEXT NOT NULL DEFAULT '',
       cliente TEXT NOT NULL,
       telefono TEXT,
       direccion TEXT,
-      tipo_entrega TEXT NOT NULL,
-      productos JSONB NOT NULL DEFAULT '[]'::jsonb,
-      subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0,
-      envio NUMERIC(12, 2) NOT NULL DEFAULT 0,
-      total NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      tipo_entrega TEXT NOT NULL DEFAULT 'Pendiente',
+      productos TEXT NOT NULL DEFAULT '[]',
+      subtotal REAL NOT NULL DEFAULT 0,
+      envio REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
       estado TEXT NOT NULL DEFAULT 'Pendiente',
-      creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      origen_pedido_id BIGINT
+      creado_en TEXT NOT NULL,
+      origen_pedido_id INTEGER
     );
 
     CREATE INDEX IF NOT EXISTS idx_pedidos_estado
@@ -218,11 +364,10 @@ async function initializeOrdersTables() {
       ON pedidos_archivados (fecha DESC);
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pedidos_archivados_origen
-      ON pedidos_archivados (origen_pedido_id)
-      WHERE origen_pedido_id IS NOT NULL;
+      ON pedidos_archivados (origen_pedido_id);
   `);
 
-  console.log('Tablas de pedidos verificadas en PostgreSQL.');
+  console.log('Tablas de pedidos verificadas en SQLite.');
 }
 
 const ordersTablesReady = initializeOrdersTables().catch(error => {
@@ -291,9 +436,7 @@ async function archiveOrdersForDate(dateKey, tzOffsetMinutes, reason = 'archived
 
     const rows = rowsResult.rows;
 
-    for (const order of rows) {
-      await client.query(
-        `
+    const postgresInsertQuery = `
           INSERT INTO pedidos_archivados (
             fecha,
             cliente_token,
@@ -325,22 +468,61 @@ async function archiveOrdersForDate(dateKey, tzOffsetMinutes, reason = 'archived
             $12
           )
           ON CONFLICT (origen_pedido_id) DO NOTHING
-        `,
-        [
-          dateKey,
-          order.cliente_token || '',
-          order.cliente || '',
-          order.telefono || '',
-          order.direccion || '',
-          order.tipo_entrega || '',
-          JSON.stringify(parseProductos(order.productos)),
-          Number(order.subtotal || 0),
-          Number(order.envio || 0),
-          Number(order.total || 0),
-          order.estado || 'Pendiente',
-          order.id
-        ]
-      );
+        `;
+
+    const sqliteInsertQuery = `
+          INSERT OR IGNORE INTO pedidos_archivados (
+            fecha,
+            cliente_token,
+            cliente,
+            telefono,
+            direccion,
+            tipo_entrega,
+            productos,
+            subtotal,
+            envio,
+            total,
+            estado,
+            creado_en,
+            origen_pedido_id
+          )
+          VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          )
+        `;
+
+    for (const order of rows) {
+      const params = [
+        dateKey,
+        order.cliente_token || '',
+        order.cliente || '',
+        order.telefono || '',
+        order.direccion || '',
+        order.tipo_entrega || '',
+        JSON.stringify(parseProductos(order.productos)),
+        Number(order.subtotal || 0),
+        Number(order.envio || 0),
+        Number(order.total || 0),
+        order.estado || 'Pendiente'
+      ];
+
+      if (isPostgresReady) {
+        await client.query(postgresInsertQuery, [...params, order.id]);
+      } else {
+        await client.query(sqliteInsertQuery, [...params, new Date().toISOString(), order.id]);
+      }
     }
 
     const deleteResult = await client.query(

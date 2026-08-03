@@ -1,6 +1,8 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
+const pgPool = require('../postgres');
+const usePostgres = Boolean(pgPool);
 const { maybeArchiveAndResetDailyOrders } = require('../database/init');
 const { requireAuth } = require('../middleware/auth');
 const {
@@ -78,9 +80,45 @@ function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
-function readConfigJson(key) {
-  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(key);
+function normalizeSqlPlaceholders(sql) {
+  if (!usePostgres) return String(sql);
+  let index = 0;
+  return String(sql).replace(/\?/g, () => `$${++index}`);
+}
+
+async function querySingle(sql, params = []) {
+  if (usePostgres) {
+    const normalized = normalizeSqlPlaceholders(sql);
+    const result = await pgPool.query(normalized, params);
+    return result.rows[0];
+  }
+
+  return db.prepare(sql).get(...params);
+}
+
+async function queryAll(sql, params = []) {
+  if (usePostgres) {
+    const normalized = normalizeSqlPlaceholders(sql);
+    const result = await pgPool.query(normalized, params);
+    return result.rows;
+  }
+
+  return db.prepare(sql).all(...params);
+}
+
+async function execute(sql, params = []) {
+  if (usePostgres) {
+    const normalized = normalizeSqlPlaceholders(sql);
+    return await pgPool.query(normalized, params);
+  }
+
+  return db.prepare(sql).run(...params);
+}
+
+async function readConfigJson(key) {
+  const row = await querySingle('SELECT valor FROM configuracion WHERE clave = ? LIMIT 1', [key]);
   if (!row?.valor) return null;
+  if (usePostgres && typeof row.valor !== 'string') return row.valor;
   try {
     return JSON.parse(row.valor);
   } catch {
@@ -88,12 +126,23 @@ function readConfigJson(key) {
   }
 }
 
-function writeConfigJson(key, value) {
-  db.prepare(`
+async function writeConfigJson(key, value) {
+  const payload = JSON.stringify(value);
+
+  if (usePostgres) {
+    await execute(`
+      INSERT INTO configuracion (clave, valor)
+      VALUES (?, ?::jsonb)
+      ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
+    `, [key, payload]);
+    return;
+  }
+
+  await execute(`
     INSERT INTO configuracion (clave, valor)
     VALUES (?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
-  `).run(key, JSON.stringify(value));
+  `, [key, payload]);
 }
 
 function normalizePromotions(value) {
@@ -235,77 +284,41 @@ function normalizeProducts(value) {
     .filter(Boolean);
 }
 
-function readPromotions() {
-  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(PROMOS_KEY);
-  if (!row?.valor) return [];
-  try {
-    return normalizePromotions(JSON.parse(row.valor));
-  } catch {
-    return [];
-  }
+async function readPromotions() {
+  const parsed = await readConfigJson(PROMOS_KEY);
+  return normalizePromotions(parsed || []);
 }
 
-function writePromotions(promotions) {
-  db.prepare(`
-    INSERT INTO configuracion (clave, valor)
-    VALUES (?, ?)
-    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
-  `).run(PROMOS_KEY, JSON.stringify(promotions));
+async function writePromotions(promotions) {
+  await writeConfigJson(PROMOS_KEY, promotions);
 }
 
-function readProducts() {
-  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(PRODUCTS_KEY);
-  if (!row?.valor) return [];
-  try {
-    return normalizeProducts(JSON.parse(row.valor));
-  } catch {
-    return [];
-  }
+async function readProducts() {
+  const parsed = await readConfigJson(PRODUCTS_KEY);
+  return normalizeProducts(parsed || []);
 }
 
-function writeProducts(products) {
-  db.prepare(`
-    INSERT INTO configuracion (clave, valor)
-    VALUES (?, ?)
-    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
-  `).run(PRODUCTS_KEY, JSON.stringify(products));
+async function writeProducts(products) {
+  await writeConfigJson(PRODUCTS_KEY, products);
 }
 
-function readContent() {
-  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(CONTENT_KEY);
-  if (!row?.valor) return null;
-  try {
-    return normalizeContent(JSON.parse(row.valor));
-  } catch {
-    return null;
-  }
+async function readContent() {
+  const parsed = await readConfigJson(CONTENT_KEY);
+  return normalizeContent(parsed || {});
 }
 
-function writeContent(content) {
-  db.prepare(`
-    INSERT INTO configuracion (clave, valor)
-    VALUES (?, ?)
-    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
-  `).run(CONTENT_KEY, JSON.stringify(content));
+async function writeContent(content) {
+  await writeConfigJson(CONTENT_KEY, content);
 }
 
-function readSoldProductsSeparated() {
-  const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(SOLD_PRODUCTS_SEPARATED_KEY);
-  if (!row?.valor) return [];
-  try {
-    return normalizeSoldProductsSeparated(JSON.parse(row.valor));
-  } catch {
-    return [];
-  }
+async function readSoldProductsSeparated() {
+  const parsed = await readConfigJson(SOLD_PRODUCTS_SEPARATED_KEY);
+  return normalizeSoldProductsSeparated(parsed || []);
 }
 
-function writeSoldProductsSeparated(names) {
+async function writeSoldProductsSeparated(names) {
   const clean = normalizeSoldProductsSeparated(names);
-  db.prepare(`
-    INSERT INTO configuracion (clave, valor)
-    VALUES (?, ?)
-    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
-  `).run(SOLD_PRODUCTS_SEPARATED_KEY, JSON.stringify(clean));
+  await writeConfigJson(SOLD_PRODUCTS_SEPARATED_KEY, clean);
   return clean;
 }
 
@@ -341,7 +354,7 @@ function hasMeaningfulDraftProducts(draft) {
   });
 }
 
-router.put('/password', requireAuth, (req, res) => {
+router.put('/password', requireAuth, async (req, res) => {
   try {
     const nextPassword = sanitizeText(req.body?.password || '', 80);
     if (!nextPassword) {
@@ -349,9 +362,9 @@ router.put('/password', requireAuth, (req, res) => {
     }
 
     const hash = bcrypt.hashSync(nextPassword, 10);
-    const result = db.prepare('UPDATE usuarios SET password = ? WHERE usuario = ?').run(hash, 'admin');
-
-    if (!result.changes) {
+    const result = await execute('UPDATE usuarios SET password = ? WHERE usuario = ?', [hash, 'admin']);
+    const changes = usePostgres ? result.rowCount : result.changes;
+    if (!changes) {
       return res.status(404).json({ ok: false, message: 'No se encontró el usuario administrador' });
     }
 
@@ -525,9 +538,9 @@ router.get('/calculadora', requireAuth, (req, res) => {
   }
 });
 
-router.get('/calculadora/draft', requireAuth, (req, res) => {
+router.get('/calculadora/draft', requireAuth, async (req, res) => {
   try {
-    const parsed = readConfigJson(CALCULATOR_DRAFT_KEY);
+    const parsed = await readConfigJson(CALCULATOR_DRAFT_KEY);
     if (!parsed) {
       return res.json({ ok: true, draft: null });
     }
@@ -538,10 +551,10 @@ router.get('/calculadora/draft', requireAuth, (req, res) => {
   }
 });
 
-router.put('/calculadora/draft', requireAuth, (req, res) => {
+router.put('/calculadora/draft', requireAuth, async (req, res) => {
   try {
     const incomingDraft = normalizeCalculatorDraft(req.body?.draft ?? req.body ?? {});
-    const currentDraft = normalizeCalculatorDraft(readConfigJson(CALCULATOR_DRAFT_KEY) || {});
+    const currentDraft = normalizeCalculatorDraft((await readConfigJson(CALCULATOR_DRAFT_KEY)) || {});
     const allowEmptyOverride = Boolean(req.body?.allowEmptyOverride);
 
     const incomingHasMeaningful = hasMeaningfulDraftProducts(incomingDraft);
@@ -555,7 +568,7 @@ router.put('/calculadora/draft', requireAuth, (req, res) => {
       return res.json({ ok: true, draft: currentDraft, ignoredStaleDraft: true });
     }
 
-    writeConfigJson(CALCULATOR_DRAFT_KEY, incomingDraft);
+    await writeConfigJson(CALCULATOR_DRAFT_KEY, incomingDraft);
     return res.json({ ok: true, draft: incomingDraft });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo guardar el borrador de calculadora' });
@@ -655,22 +668,23 @@ router.delete('/calculadora/:id', requireAuth, (req, res) => {
   }
 });
 
-router.get('/public-promotions', (req, res) => {
+router.get('/public-promotions', async (req, res) => {
   try {
-    return res.json({ ok: true, promotions: readPromotions() });
+    const promotions = await readPromotions();
+    return res.json({ ok: true, promotions });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron cargar promociones' });
   }
 });
 
-router.get('/public-settings', (req, res) => {
+router.get('/public-settings', async (req, res) => {
   try {
     return res.json({
       ok: true,
       settings: {
-        content: readContent(),
-        promotions: readPromotions(),
-        products: readProducts()
+        content: await readContent(),
+        promotions: await readPromotions(),
+        products: await readProducts()
       }
     });
   } catch (error) {
@@ -686,18 +700,19 @@ router.get('/events', requireAuth, (req, res) => {
   attachAdminEventClient(req, res);
 });
 
-router.get('/promotions', requireAuth, (req, res) => {
+router.get('/promotions', requireAuth, async (req, res) => {
   try {
-    return res.json({ ok: true, promotions: readPromotions() });
+    const promotions = await readPromotions();
+    return res.json({ ok: true, promotions });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron cargar promociones' });
   }
 });
 
-router.put('/promotions', requireAuth, (req, res) => {
+router.put('/promotions', requireAuth, async (req, res) => {
   try {
     const promotions = normalizePromotions(req.body?.promotions);
-    writePromotions(promotions);
+    await writePromotions(promotions);
     broadcastPublicSettingsEvent('promotions-updated', { ts: Date.now() });
     return res.json({ ok: true, promotions });
   } catch (error) {
@@ -705,18 +720,19 @@ router.put('/promotions', requireAuth, (req, res) => {
   }
 });
 
-router.get('/content', requireAuth, (req, res) => {
+router.get('/content', requireAuth, async (req, res) => {
   try {
-    return res.json({ ok: true, content: readContent() });
+    const content = await readContent();
+    return res.json({ ok: true, content });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo cargar el contenido' });
   }
 });
 
-router.put('/content', requireAuth, (req, res) => {
+router.put('/content', requireAuth, async (req, res) => {
   try {
     const content = normalizeContent(req.body?.content);
-    writeContent(content);
+    await writeContent(content);
     broadcastPublicSettingsEvent('content-updated', { ts: Date.now() });
     return res.json({ ok: true, content });
   } catch (error) {
@@ -724,23 +740,25 @@ router.put('/content', requireAuth, (req, res) => {
   }
 });
 
-router.get('/public-products', (req, res) => {
+router.get('/public-products', async (req, res) => {
   try {
-    return res.json({ ok: true, products: readProducts() });
+    const products = await readProducts();
+    return res.json({ ok: true, products });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron cargar productos' });
   }
 });
 
-router.get('/products', requireAuth, (req, res) => {
+router.get('/products', requireAuth, async (req, res) => {
   try {
-    return res.json({ ok: true, products: readProducts() });
+    const products = await readProducts();
+    return res.json({ ok: true, products });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron cargar productos' });
   }
 });
 
-router.get('/sold-products', requireAuth, (req, res) => {
+router.get('/sold-products', requireAuth, async (req, res) => {
   try {
     const requestedStart = sanitizeText(req.query?.startDate || '', 10);
     const requestedEnd = sanitizeText(req.query?.endDate || '', 10);
@@ -759,23 +777,23 @@ router.get('/sold-products', requireAuth, (req, res) => {
     const startRange = buildUtcRangeFromDateKey(startDate, MEXICO_CITY_TZ_OFFSET_MINUTES);
     const endRange = buildUtcRangeFromDateKey(endDate, MEXICO_CITY_TZ_OFFSET_MINUTES);
 
-    const rows = db.prepare(`
+    const rows = await queryAll(`
       SELECT productos, fecha
       FROM pedidos
       WHERE fecha >= ?
         AND fecha < ?
         AND estado != 'Cancelado'
-      ORDER BY datetime(fecha) DESC, id DESC
-    `).all(startRange.startIso, endRange.endIso);
+      ORDER BY fecha DESC, id DESC
+    `, [startRange.startIso, endRange.endIso]);
 
-    const archivedRows = db.prepare(`
+    const archivedRows = await queryAll(`
       SELECT productos, fecha
       FROM pedidos_archivados
       WHERE fecha >= ?
         AND fecha <= ?
         AND estado != 'Cancelado'
-      ORDER BY datetime(fecha) DESC, id DESC
-    `).all(startDate, endDate);
+      ORDER BY fecha DESC, id DESC
+    `, [startDate, endDate]);
 
     const allRows = [...rows, ...archivedRows];
 
@@ -834,7 +852,7 @@ router.get('/sold-products', requireAuth, (req, res) => {
         endDate,
         timezone: 'America/Mexico_City'
       },
-      separatedNames: readSoldProductsSeparated(),
+      separatedNames: await readSoldProductsSeparated(),
       items,
       summary
     });
@@ -843,9 +861,9 @@ router.get('/sold-products', requireAuth, (req, res) => {
   }
 });
 
-router.put('/sold-products/separated', requireAuth, (req, res) => {
+router.put('/sold-products/separated', requireAuth, async (req, res) => {
   try {
-    const separatedNames = writeSoldProductsSeparated(req.body?.names);
+    const separatedNames = await writeSoldProductsSeparated(req.body?.names);
     broadcastAdminEvent('sold-products-separation-updated', { ts: Date.now() });
     return res.json({ ok: true, separatedNames });
   } catch (error) {
@@ -853,10 +871,10 @@ router.put('/sold-products/separated', requireAuth, (req, res) => {
   }
 });
 
-router.put('/products', requireAuth, (req, res) => {
+router.put('/products', requireAuth, async (req, res) => {
   try {
     const products = normalizeProducts(req.body?.products);
-    writeProducts(products);
+    await writeProducts(products);
     broadcastPublicSettingsEvent('products-updated', { ts: Date.now() });
     return res.json({ ok: true, products });
   } catch (error) {
