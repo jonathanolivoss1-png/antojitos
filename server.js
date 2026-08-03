@@ -1,15 +1,29 @@
 require('dotenv').config();
-
+console.log("=== DIAGNÓSTICO DE RENDER ===");
+console.log("Ejecutándose en Render:", process.env.RENDER === "true");
+console.log(
+  "DATABASE_URL detectada:",
+  Boolean(process.env.DATABASE_URL)
+);
+console.log(
+  "Commit desplegado:",
+  process.env.RENDER_GIT_COMMIT || "local"
+);
 const express = require('express');
 const pool = require("./db");
 const pgPool = require("./postgres");
 const path = require('path');
 const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
 const initDatabase = require('./database/init');
-const { maybeArchiveAndResetDailyOrders } = require('./database/init');
 const authRoutes = require('./routes/auth');
 const { router: pedidosRoutes } = require('./routes/pedidos');
+
+const {
+  maybeArchiveAndResetDailyOrders
+} = require('./database/init');
 const adminRoutes = require('./routes/admin');
+
 
 const app = express();
 app.get("/test-postgres", (req, res) => {
@@ -19,36 +33,55 @@ app.get("/test-postgres", (req, res) => {
 });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-const port = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
 initDatabase();
-maybeArchiveAndResetDailyOrders();
+
+try {
+  maybeArchiveAndResetDailyOrders();
+} catch (error) {
+  console.error('Error archivando pedidos:', error);
+}
 setInterval(() => {
-    try {
-        maybeArchiveAndResetDailyOrders();
-    } catch (error) {
-        console.warn('No se pudo verificar el reinicio diario automático', error);
-    }
+  try {
+    maybeArchiveAndResetDailyOrders();
+  } catch (error) {
+    console.error('Error archivando pedidos:', error);
+  }
 }, 60 * 1000);
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
-app.set('trust proxy', isProduction ? 1 : 0);
+if (!process.env.SESSION_SECRET) {
+  throw new Error('Falta la variable SESSION_SECRET');
+}
 
-app.use(session({
+app.set('trust proxy', 1);
+
+app.use(
+  session({
+    store: new PgSession({
+      pool: pgPool,
+      tableName: 'user_sessions',
+      createTableIfMissing: true
+    }),
+
     name: process.env.SESSION_NAME || 'anafres.sid',
-    secret: process.env.SESSION_SECRET || 'cambia_esta_clave_en_produccion',
+    secret: process.env.SESSION_SECRET,
+
     resave: false,
     saveUninitialized: false,
+
     cookie: {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: isProduction,
-        maxAge: 1000 * 60 * 60 * 12
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000
     }
-}));
+  })
+);
 
 app.use('/api', authRoutes);
 app.use('/api/pedidos', pedidosRoutes);
@@ -67,45 +100,17 @@ app.use((err, req, res, next) => {
     res.status(500).json({ ok: false, message: 'Error interno del servidor' });
 });
 //
-app.get("/test-db", async (req, res) => {
-  try {
-    const resultado = await pgPool.query(`
-      SELECT
-        NOW() AS fecha,
-        current_database() AS base_de_datos,
-        current_user AS usuario
-    `);
-
-    res.json({
-      conectado: true,
-      mensaje: "Conexión a PostgreSQL exitosa",
-      datos: resultado.rows[0],
-    });
-  } catch (error) {
-    console.error("Error conectando a PostgreSQL:", error);
-
-    res.status(500).json({
+app.get("/test-postgres", async (req, res) => {
+  if (!pgPool) {
+    return res.status(500).json({
       conectado: false,
-      mensaje: "No se pudo conectar a PostgreSQL",
-      error: error.message,
+      mensaje: "Render no proporcionó DATABASE_URL al servidor",
+      ejecutandoseEnRender: process.env.RENDER === "true",
+      databaseUrlDetectada: Boolean(process.env.DATABASE_URL),
     });
   }
-});
-//
-const PORT = process.env.PORT || 3000;
-//
-app.get("/test-postgres", async (req, res) => {
+
   try {
-    console.log("Tipo de pgPool.query:", typeof pgPool.query);
-
-    if (typeof pgPool.query !== "function") {
-      return res.status(500).json({
-        conectado: false,
-        mensaje: "pgPool no es una conexión PostgreSQL válida",
-        tipoQuery: typeof pgPool.query,
-      });
-    }
-
     const resultado = await pgPool.query(`
       SELECT
         NOW() AS fecha,
@@ -123,7 +128,7 @@ app.get("/test-postgres", async (req, res) => {
 
     res.status(500).json({
       conectado: false,
-      mensaje: "No se pudo conectar a PostgreSQL",
+      mensaje: "DATABASE_URL existe, pero PostgreSQL rechazó la conexión",
       error: error.message,
     });
   }
