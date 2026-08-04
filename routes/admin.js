@@ -21,8 +21,23 @@ const SOLD_PRODUCTS_SEPARATED_KEY = 'sold_products_separated_v1';
 const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
 
 function parseProductos(raw) {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+
+  if (!raw) {
+    return [];
+  }
+
   try {
-    return JSON.parse(raw || '[]');
+    const parsed =
+      typeof raw === 'string'
+        ? JSON.parse(raw)
+        : raw;
+
+    return Array.isArray(parsed)
+      ? parsed
+      : [];
   } catch {
     return [];
   }
@@ -798,29 +813,67 @@ router.get('/sold-products', requireAuth, async (req, res) => {
     const allRows = [...rows, ...archivedRows];
 
     const aggregate = new Map();
-    allRows.forEach(row => {
-      const rawDate = String(row?.fecha || '').slice(0, 10);
-      const shouldInclude = (!rawDate || rawDate >= startDate) && (!rawDate || rawDate <= endDate);
-      if (!shouldInclude) return;
 
-      parseProductos(row.productos).forEach(item => {
-        const name = sanitizeText(item?.name || '', 140);
-        const quantity = Math.max(0, Number(item?.qty || 0));
-        const unitPrice = Math.max(0, Number(item?.price || 0));
-        if (!name || quantity <= 0) return;
+allRows.forEach(row => {
+  parseProductos(row.productos).forEach(item => {
+    const name = sanitizeText(
+      item?.name ||
+      item?.nombre ||
+      'Producto',
+      140
+    );
 
-        const totalAmount = roundMoney(quantity * unitPrice);
-        const current = aggregate.get(name) || {
-          name,
-          quantitySold: 0,
-          totalAmount: 0
-        };
+    const normalizedName =
+      normalizeSoldProductName(name);
 
-        current.quantitySold += quantity;
-        current.totalAmount = roundMoney(current.totalAmount + totalAmount);
-        aggregate.set(name, current);
-      });
-    });
+    const quantity = Math.max(
+      0,
+      Number(
+        item?.qty ??
+        item?.cantidad ??
+        0
+      )
+    );
+
+    const unitPrice = Math.max(
+      0,
+      Number(
+        item?.price ??
+        item?.precio ??
+        0
+      )
+    );
+
+    if (
+      !normalizedName ||
+      quantity <= 0
+    ) {
+      return;
+    }
+
+    const totalAmount = roundMoney(
+      quantity * unitPrice
+    );
+
+    const current =
+      aggregate.get(normalizedName) || {
+        name,
+        quantitySold: 0,
+        totalAmount: 0
+      };
+
+    current.quantitySold += quantity;
+
+    current.totalAmount = roundMoney(
+      current.totalAmount + totalAmount
+    );
+
+    aggregate.set(
+      normalizedName,
+      current
+    );
+  });
+});
 
     const items = Array.from(aggregate.values())
       .map(item => ({
@@ -857,8 +910,17 @@ router.get('/sold-products', requireAuth, async (req, res) => {
       summary
     });
   } catch (error) {
-    return res.status(500).json({ ok: false, message: 'No se pudieron calcular los productos vendidos' });
-  }
+  console.error(
+    'Error calculando productos vendidos:',
+    error
+  );
+
+  return res.status(500).json({
+    ok: false,
+    message:
+      'No se pudieron calcular los productos vendidos'
+  });
+}
 });
 
 router.put('/sold-products/separated', requireAuth, async (req, res) => {
@@ -882,59 +944,297 @@ router.put('/products', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/stats', requireAuth, (req, res) => {
+router.get('/stats', requireAuth, async (req, res) => {
   try {
-    maybeArchiveAndResetDailyOrders();
-    const date = sanitizeText(req.query?.date || '', 10);
-    const tzOffset = Number(req.query?.tzOffset);
-    const effectiveDate = isValidDateKey(date) ? date : new Date().toISOString().slice(0, 10);
-    const dayRange = buildUtcRangeFromDateKey(effectiveDate, tzOffset);
-    const monthRange = buildUtcMonthRangeFromDateKey(effectiveDate, tzOffset);
+    await maybeArchiveAndResetDailyOrders();
 
-    const totalPedidos = db.prepare('SELECT COUNT(*) AS count FROM pedidos WHERE fecha >= ? AND fecha < ?').get(dayRange.startIso, dayRange.endIso).count;
-    const pendientes = db.prepare("SELECT COUNT(*) AS count FROM pedidos WHERE fecha >= ? AND fecha < ? AND estado IN ('Pendiente', 'Confirmado', 'Preparando', 'En camino')").get(dayRange.startIso, dayRange.endIso).count;
-    const entregados = db.prepare("SELECT COUNT(*) AS count FROM pedidos WHERE fecha >= ? AND fecha < ? AND estado = 'Entregado'").get(dayRange.startIso, dayRange.endIso).count;
+    const requestedDate = sanitizeText(
+      req.query?.date || '',
+      10
+    );
 
-    const ventasHoy = db.prepare(`
-      SELECT COALESCE(SUM(total), 0) AS total
-      FROM pedidos
-      WHERE fecha >= ?
-        AND fecha < ?
-        AND estado != 'Cancelado'
-    `).get(dayRange.startIso, dayRange.endIso).total;
+    const requestedOffset = Number(
+      req.query?.tzOffset
+    );
 
-    const ventasMes = db.prepare(`
-      SELECT COALESCE(SUM(total), 0) AS total
-      FROM pedidos
-      WHERE fecha >= ?
-        AND fecha < ?
-        AND estado != 'Cancelado'
-    `).get(monthRange.startIso, monthRange.endIso).total;
+    const tzOffset = Number.isFinite(requestedOffset)
+      ? requestedOffset
+      : MEXICO_CITY_TZ_OFFSET_MINUTES;
 
-    const totalVendido = db.prepare(`
-      SELECT COALESCE(SUM(total), 0) AS total
-      FROM pedidos
-      WHERE fecha >= ?
-        AND fecha < ?
-        AND estado != 'Cancelado'
-    `).get(dayRange.startIso, dayRange.endIso).total;
+    const effectiveDate = isValidDateKey(requestedDate)
+      ? requestedDate
+      : getMexicoCityDateKey();
 
-    const promedioPedido = totalPedidos > 0 ? Number(totalVendido) / Number(totalPedidos) : 0;
+    const dayRange = buildUtcRangeFromDateKey(
+      effectiveDate,
+      tzOffset
+    );
 
-    const rows = db.prepare('SELECT productos FROM pedidos WHERE fecha >= ? AND fecha < ? AND estado != \'Cancelado\'').all(dayRange.startIso, dayRange.endIso);
+    const monthRange = buildUtcMonthRangeFromDateKey(
+      effectiveDate,
+      tzOffset
+    );
+
+    const [year, month] = effectiveDate
+      .split('-')
+      .map(Number);
+
+    const monthStartKey =
+      `${year}-${String(month).padStart(2, '0')}-01`;
+
+    const nextMonthStartKey =
+      month === 12
+        ? `${year + 1}-01-01`
+        : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+
+    const [
+      activeDay,
+      archivedDay,
+      activeMonth,
+      archivedMonth,
+      activeHistorical,
+      archivedHistorical,
+      activeProducts,
+      archivedProducts
+    ] = await Promise.all([
+      querySingle(
+        `
+          SELECT
+            COUNT(*) AS total_pedidos,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado IN (
+                  'Pendiente',
+                  'Confirmado',
+                  'Preparando',
+                  'En camino'
+                )
+                THEN 1
+                ELSE 0
+              END
+            ), 0) AS pendientes,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado = 'Entregado'
+                THEN 1
+                ELSE 0
+              END
+            ), 0) AS entregados,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado != 'Cancelado'
+                THEN total
+                ELSE 0
+              END
+            ), 0) AS ventas,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado != 'Cancelado'
+                THEN 1
+                ELSE 0
+              END
+            ), 0) AS pedidos_validos
+
+          FROM pedidos
+          WHERE fecha >= ?
+            AND fecha < ?
+        `,
+        [
+          dayRange.startIso,
+          dayRange.endIso
+        ]
+      ),
+
+      querySingle(
+        `
+          SELECT
+            COUNT(*) AS total_pedidos,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado IN (
+                  'Pendiente',
+                  'Confirmado',
+                  'Preparando',
+                  'En camino'
+                )
+                THEN 1
+                ELSE 0
+              END
+            ), 0) AS pendientes,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado = 'Entregado'
+                THEN 1
+                ELSE 0
+              END
+            ), 0) AS entregados,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado != 'Cancelado'
+                THEN total
+                ELSE 0
+              END
+            ), 0) AS ventas,
+
+            COALESCE(SUM(
+              CASE
+                WHEN estado != 'Cancelado'
+                THEN 1
+                ELSE 0
+              END
+            ), 0) AS pedidos_validos
+
+          FROM pedidos_archivados
+          WHERE fecha = ?
+        `,
+        [effectiveDate]
+      ),
+
+      querySingle(
+        `
+          SELECT COALESCE(SUM(total), 0) AS total
+          FROM pedidos
+          WHERE fecha >= ?
+            AND fecha < ?
+            AND estado != 'Cancelado'
+        `,
+        [
+          monthRange.startIso,
+          monthRange.endIso
+        ]
+      ),
+
+      querySingle(
+        `
+          SELECT COALESCE(SUM(total), 0) AS total
+          FROM pedidos_archivados
+          WHERE fecha >= ?
+            AND fecha < ?
+            AND estado != 'Cancelado'
+        `,
+        [
+          monthStartKey,
+          nextMonthStartKey
+        ]
+      ),
+
+      querySingle(
+        `
+          SELECT COALESCE(SUM(total), 0) AS total
+          FROM pedidos
+          WHERE estado != 'Cancelado'
+        `
+      ),
+
+      querySingle(
+        `
+          SELECT COALESCE(SUM(total), 0) AS total
+          FROM pedidos_archivados
+          WHERE estado != 'Cancelado'
+        `
+      ),
+
+      queryAll(
+        `
+          SELECT productos
+          FROM pedidos
+          WHERE fecha >= ?
+            AND fecha < ?
+            AND estado != 'Cancelado'
+        `,
+        [
+          dayRange.startIso,
+          dayRange.endIso
+        ]
+      ),
+
+      queryAll(
+        `
+          SELECT productos
+          FROM pedidos_archivados
+          WHERE fecha = ?
+            AND estado != 'Cancelado'
+        `,
+        [effectiveDate]
+      )
+    ]);
+
+    const totalPedidos =
+      Number(activeDay?.total_pedidos || 0) +
+      Number(archivedDay?.total_pedidos || 0);
+
+    const pendientes =
+      Number(activeDay?.pendientes || 0) +
+      Number(archivedDay?.pendientes || 0);
+
+    const entregados =
+      Number(activeDay?.entregados || 0) +
+      Number(archivedDay?.entregados || 0);
+
+    const pedidosValidos =
+      Number(activeDay?.pedidos_validos || 0) +
+      Number(archivedDay?.pedidos_validos || 0);
+
+    const ventasDia = roundMoney(
+      Number(activeDay?.ventas || 0) +
+      Number(archivedDay?.ventas || 0)
+    );
+
+    const ventasMes = roundMoney(
+      Number(activeMonth?.total || 0) +
+      Number(archivedMonth?.total || 0)
+    );
+
+    const totalVendido = roundMoney(
+      Number(activeHistorical?.total || 0) +
+      Number(archivedHistorical?.total || 0)
+    );
+
+    const promedioPedido =
+      pedidosValidos > 0
+        ? roundMoney(ventasDia / pedidosValidos)
+        : 0;
+
     const productCount = new Map();
 
-    rows.forEach(row => {
+    [
+      ...activeProducts,
+      ...archivedProducts
+    ].forEach(row => {
       parseProductos(row.productos).forEach(item => {
-        const name = String(item?.name || '').trim();
-        const qty = Number(item?.qty || 0);
-        if (!name || !qty) return;
-        productCount.set(name, (productCount.get(name) || 0) + qty);
+        const name = sanitizeText(
+          item?.name || item?.nombre || '',
+          140
+        );
+
+        const qty = Math.max(
+          0,
+          Number(
+            item?.qty ??
+            item?.cantidad ??
+            0
+          )
+        );
+
+        if (!name || qty <= 0) return;
+
+        productCount.set(
+          name,
+          (productCount.get(name) || 0) + qty
+        );
       });
     });
 
-    let productoMasVendido = '';
+    let productoMasVendido = 'Sin datos';
     let productoCantidad = 0;
+
     for (const [name, qty] of productCount.entries()) {
       if (qty > productoCantidad) {
         productoMasVendido = name;
@@ -944,20 +1244,36 @@ router.get('/stats', requireAuth, (req, res) => {
 
     return res.json({
       ok: true,
+
+      period: {
+        date: effectiveDate,
+        timezone: 'America/Mexico_City'
+      },
+
       stats: {
-        totalPedidos: Number(totalPedidos),
-        pedidosPendientes: Number(pendientes),
-        pedidosEntregados: Number(entregados),
-        ventasDia: Number(ventasHoy || 0),
-        ventasMes: Number(ventasMes || 0),
-        totalVendido: Number(totalVendido || 0),
-        promedioPorPedido: Number(promedioPedido || 0),
-        productoMasVendido: productoMasVendido || 'Sin datos',
-        productoMasVendidoCantidad: Number(productoCantidad || 0)
+        totalPedidos,
+        pedidosPendientes: pendientes,
+        pedidosEntregados: entregados,
+        ventasDia,
+        ventasMes,
+        totalVendido,
+        promedioPorPedido: promedioPedido,
+        productoMasVendido,
+        productoMasVendidoCantidad:
+          productoCantidad
       }
     });
   } catch (error) {
-    return res.status(500).json({ ok: false, message: 'No se pudieron calcular estadisticas' });
+    console.error(
+      'Error calculando estadísticas del dashboard:',
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message:
+        'No se pudieron calcular estadísticas'
+    });
   }
 });
 
