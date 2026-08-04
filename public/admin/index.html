@@ -606,7 +606,7 @@
       <div>
         <span class="tag">Administración</span>
         <h1>Gestiona menú, promos y pedidos</h1>
-        <p>Los cambios que hagas aquí actualizan el sitio principal sin tocar código. Si más adelante agregas backend, solo necesitas reemplazar el adaptador de almacenamiento.</p>
+        <p>Los cambios que hagas aquí actualizan el sitio principal sin tocar código. Los cambios se guardan globalmente en el servidor y se reflejan en el sitio público.</p>
       </div>
       <div class="actions">
         <a class="ghost-btn" href="../index.html">Ver sitio</a>
@@ -648,7 +648,7 @@
         <div class="form-grid">
           <div class="form-group full">
             <label for="newPasswordInput">Nueva contraseña del panel</label>
-            <input id="newPasswordInput" type="text" placeholder="Ejemplo: anafres-admin-2026" />
+            <input id="newPasswordInput" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
           </div>
         </div>
         <div class="footer-actions">
@@ -866,6 +866,19 @@
     </div>
   </div>
 
+  <div class="admin-modal" id="orderStatusModal" aria-hidden="true">
+    <div class="admin-modal-box">
+      <h3>Editar estado del pedido</h3>
+      <input id="statusOrderId" type="hidden" />
+      <div class="form-group">
+        <label for="statusSelect">Estado</label>
+        <select id="statusSelect"></select>
+      </div>
+      <div class="footer-actions">
+        <button class="ghost-btn" id="closeStatusModal" type="button">Cancelar</button>
+        <button class="save-btn" id="saveStatusModal" type="button">Guardar estado</button>
+      </div>
+    </div>
   </div>
   <script src="admin.js"></script>
 <script src="catalog-admin.js"></script>

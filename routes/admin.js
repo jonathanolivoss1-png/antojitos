@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const pgPool = require('../postgres');
 const usePostgres = Boolean(pgPool);
-const { maybeArchiveAndResetDailyOrders } = require('../database/init');
+const { maybeArchiveAndResetDailyOrders } = require('./pedidos');
 const { requireAuth } = require('../middleware/auth');
 const {
   attachAdminEventClient,
@@ -17,6 +17,7 @@ const PROMOS_KEY = 'site_promotions_v1';
 const PRODUCTS_KEY = 'site_products_v1';
 const CONTENT_KEY = 'site_content_v1';
 const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
+const CALCULATOR_HISTORY_KEY = 'calculator_history_v1';
 const SOLD_PRODUCTS_SEPARATED_KEY = 'sold_products_separated_v1';
 const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
 
@@ -372,8 +373,8 @@ function hasMeaningfulDraftProducts(draft) {
 router.put('/password', requireAuth, async (req, res) => {
   try {
     const nextPassword = sanitizeText(req.body?.password || '', 80);
-    if (!nextPassword) {
-      return res.status(400).json({ ok: false, message: 'La contraseña no puede quedar vacía' });
+    if (nextPassword.length < 8) {
+      return res.status(400).json({ ok: false, message: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
     const hash = bcrypt.hashSync(nextPassword, 10);
@@ -464,91 +465,139 @@ function normalizeCalculatorPayload(body) {
   };
 }
 
-function mapCalculatorRow(row) {
-  const productos = db.prepare('SELECT * FROM calculadora_productos WHERE calculo_id = ? ORDER BY id').all(row.id);
+function normalizeStoredCalculatorProduct(item, index) {
+  const source = item && typeof item === 'object' ? item : {};
   return {
-    id: row.id,
-    fecha: row.fecha,
-    origen: row.origen,
-    cantidadDisponible: Number(row.cantidad_disponible || 0),
-    tipoCantidad: row.tipo_cantidad,
-    cantidadProductos: Number(row.cantidad_productos || 0),
-    costoTotal: Number(row.costo_total || 0),
-    ventaTotal: Number(row.venta_total || 0),
-    gananciaEstimada: Number(row.ganancia_estimada || 0),
-    margenGanancia: Number(row.margen_ganancia || 0),
-    saldoRestante: Number(row.saldo_restante || 0),
-    productos: productos.map(item => ({
-      id: item.id,
-      nombre: item.nombre,
-      cantidad: Number(item.cantidad || 0),
-      costoUnitario: Number(item.costo_unitario || 0),
-      precioVentaUnitario: Number(item.precio_venta_unitario || 0),
-      costoTotal: Number(item.costo_total || 0),
-      ventaTotal: Number(item.venta_total || 0),
-      gananciaEstimada: Number(item.ganancia_estimada || 0),
-      margenGanancia: Number(item.margen_ganancia || 0)
-    }))
+    id: Number.isInteger(Number(source.id)) && Number(source.id) > 0
+      ? Number(source.id)
+      : index + 1,
+    nombre: sanitizeText(source.nombre || source.name || '', 120),
+    cantidad: Math.max(0, sanitizeNumber(source.cantidad ?? source.qty ?? 0)),
+    costoUnitario: Math.max(0, sanitizeNumber(source.costoUnitario ?? source.costUnit ?? 0)),
+    precioVentaUnitario: Math.max(0, sanitizeNumber(source.precioVentaUnitario ?? source.priceUnit ?? 0)),
+    costoTotal: roundMoney(source.costoTotal ?? source.costTotal ?? 0),
+    ventaTotal: roundMoney(source.ventaTotal ?? source.saleTotal ?? 0),
+    gananciaEstimada: roundMoney(source.gananciaEstimada ?? 0),
+    margenGanancia: roundMoney(source.margenGanancia ?? 0)
   };
 }
 
-router.post('/calculadora', requireAuth, (req, res) => {
+function normalizeStoredCalculatorRecord(record, index) {
+  const source = record && typeof record === 'object' ? record : {};
+  const parsedId = Number(source.id);
+  const parsedDate = new Date(source.fecha || Date.now());
+  const productos = Array.isArray(source.productos)
+    ? source.productos.map(normalizeStoredCalculatorProduct).filter(item => item.nombre)
+    : [];
+
+  return {
+    id: Number.isInteger(parsedId) && parsedId > 0 ? parsedId : index + 1,
+    fecha: Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString(),
+    origen: ['manual', 'dashboard', 'sin_cantidad_inicial'].includes(source.origen)
+      ? source.origen
+      : 'manual',
+    cantidadDisponible: roundMoney(source.cantidadDisponible ?? source.cantidad_disponible ?? 0),
+    tipoCantidad: ['bruta', 'neta'].includes(source.tipoCantidad ?? source.tipo_cantidad)
+      ? (source.tipoCantidad ?? source.tipo_cantidad)
+      : 'bruta',
+    cantidadProductos: Number(source.cantidadProductos ?? source.cantidad_productos ?? productos.length),
+    costoTotal: roundMoney(source.costoTotal ?? source.costo_total ?? 0),
+    ventaTotal: roundMoney(source.ventaTotal ?? source.venta_total ?? 0),
+    gananciaEstimada: roundMoney(source.gananciaEstimada ?? source.ganancia_estimada ?? 0),
+    margenGanancia: roundMoney(source.margenGanancia ?? source.margen_ganancia ?? 0),
+    saldoRestante: roundMoney(source.saldoRestante ?? source.saldo_restante ?? 0),
+    productos
+  };
+}
+
+function buildStoredCalculatorRecord(payload, id, fecha = new Date().toISOString()) {
+  return normalizeStoredCalculatorRecord({
+    id,
+    fecha,
+    origen: payload.origen,
+    cantidadDisponible: payload.cantidadDisponible,
+    tipoCantidad: payload.tipoCantidad,
+    cantidadProductos: payload.cantidadProductos,
+    costoTotal: payload.costoTotal,
+    ventaTotal: payload.ventaTotal,
+    gananciaEstimada: payload.gananciaEstimada,
+    margenGanancia: payload.margenGanancia,
+    saldoRestante: payload.saldoRestante,
+    productos: payload.productos.map((producto, index) => ({
+      id: index + 1,
+      nombre: producto.name,
+      cantidad: producto.qty,
+      costoUnitario: producto.costUnit,
+      precioVentaUnitario: producto.priceUnit,
+      costoTotal: producto.costTotal,
+      ventaTotal: producto.saleTotal,
+      gananciaEstimada: producto.gananciaEstimada,
+      margenGanancia: producto.margenGanancia
+    }))
+  }, 0);
+}
+
+function readLegacyCalculatorHistoryFromSqlite() {
+  if (usePostgres) return [];
+
+  try {
+    const rows = db.prepare('SELECT * FROM calculadora_calculos ORDER BY id DESC').all();
+    return rows.map((row, index) => {
+      const productos = db.prepare(
+        'SELECT * FROM calculadora_productos WHERE calculo_id = ? ORDER BY id'
+      ).all(row.id);
+
+      return normalizeStoredCalculatorRecord({ ...row, productos }, index);
+    });
+  } catch (error) {
+    console.warn('No se pudo migrar el historial anterior de calculadora:', error.message);
+    return [];
+  }
+}
+
+async function readCalculatorHistory() {
+  const stored = await readConfigJson(CALCULATOR_HISTORY_KEY);
+  if (Array.isArray(stored)) {
+    return stored
+      .map(normalizeStoredCalculatorRecord)
+      .sort((a, b) => Number(b.id) - Number(a.id));
+  }
+
+  const legacy = readLegacyCalculatorHistoryFromSqlite();
+  if (legacy.length) {
+    await writeConfigJson(CALCULATOR_HISTORY_KEY, legacy);
+  }
+  return legacy;
+}
+
+async function writeCalculatorHistory(history) {
+  const clean = (Array.isArray(history) ? history : [])
+    .map(normalizeStoredCalculatorRecord)
+    .sort((a, b) => Number(b.id) - Number(a.id));
+  await writeConfigJson(CALCULATOR_HISTORY_KEY, clean);
+  return clean;
+}
+
+router.post('/calculadora', requireAuth, async (req, res) => {
   try {
     const payload = normalizeCalculatorPayload(req.body || {});
-    const insertCalculation = db.prepare(`
-      INSERT INTO calculadora_calculos (
-        fecha, origen, cantidad_disponible, tipo_cantidad, cantidad_productos, costo_total, venta_total, ganancia_estimada, margen_ganancia, saldo_restante
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const insertProduct = db.prepare(`
-      INSERT INTO calculadora_productos (
-        calculo_id, nombre, cantidad, costo_unitario, precio_venta_unitario, costo_total, venta_total, ganancia_estimada, margen_ganancia
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const tx = db.transaction(() => {
-      const result = insertCalculation.run(
-        new Date().toISOString(),
-        payload.origen,
-        payload.cantidadDisponible,
-        payload.tipoCantidad,
-        payload.cantidadProductos,
-        payload.costoTotal,
-        payload.ventaTotal,
-        payload.gananciaEstimada,
-        payload.margenGanancia,
-        payload.saldoRestante
-      );
-      const calculoId = result.lastInsertRowid;
-      payload.productos.forEach(producto => {
-        insertProduct.run(
-          calculoId,
-          producto.name,
-          producto.qty,
-          producto.costUnit,
-          producto.priceUnit,
-          producto.costTotal,
-          producto.saleTotal,
-          producto.gananciaEstimada,
-          producto.margenGanancia
-        );
-      });
-      return calculoId;
-    });
-
-    const calculoId = tx();
-    const row = db.prepare('SELECT * FROM calculadora_calculos WHERE id = ?').get(calculoId);
-    return res.status(201).json({ ok: true, calculo: mapCalculatorRow(row) });
+    const history = await readCalculatorHistory();
+    const nextId = history.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
+    const calculo = buildStoredCalculatorRecord(payload, nextId);
+    await writeCalculatorHistory([calculo, ...history]);
+    return res.status(201).json({ ok: true, calculo });
   } catch (error) {
+    console.error('Error guardando cálculo:', error);
     return res.status(500).json({ ok: false, message: 'No se pudo guardar el cálculo' });
   }
 });
 
-router.get('/calculadora', requireAuth, (req, res) => {
+router.get('/calculadora', requireAuth, async (req, res) => {
   try {
-    const rows = db.prepare('SELECT * FROM calculadora_calculos ORDER BY id DESC').all();
-    return res.json({ ok: true, calculos: rows.map(mapCalculatorRow) });
+    const calculos = await readCalculatorHistory();
+    return res.json({ ok: true, calculos });
   } catch (error) {
+    console.error('Error cargando cálculos:', error);
     return res.status(500).json({ ok: false, message: 'No se pudieron cargar los cálculos' });
   }
 });
@@ -559,7 +608,6 @@ router.get('/calculadora/draft', requireAuth, async (req, res) => {
     if (!parsed) {
       return res.json({ ok: true, draft: null });
     }
-
     return res.json({ ok: true, draft: normalizeCalculatorDraft(parsed) });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo cargar el borrador de calculadora' });
@@ -571,7 +619,6 @@ router.put('/calculadora/draft', requireAuth, async (req, res) => {
     const incomingDraft = normalizeCalculatorDraft(req.body?.draft ?? req.body ?? {});
     const currentDraft = normalizeCalculatorDraft((await readConfigJson(CALCULATOR_DRAFT_KEY)) || {});
     const allowEmptyOverride = Boolean(req.body?.allowEmptyOverride);
-
     const incomingHasMeaningful = hasMeaningfulDraftProducts(incomingDraft);
     const currentHasMeaningful = hasMeaningfulDraftProducts(currentDraft);
 
@@ -590,25 +637,25 @@ router.put('/calculadora/draft', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/calculadora/:id', requireAuth, (req, res) => {
+router.get('/calculadora/:id', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ ok: false, message: 'ID inválido' });
     }
 
-    const row = db.prepare('SELECT * FROM calculadora_calculos WHERE id = ?').get(id);
-    if (!row) {
+    const history = await readCalculatorHistory();
+    const calculo = history.find(item => Number(item.id) === id);
+    if (!calculo) {
       return res.status(404).json({ ok: false, message: 'Cálculo no encontrado' });
     }
-
-    return res.json({ ok: true, calculo: mapCalculatorRow(row) });
+    return res.json({ ok: true, calculo });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo consultar el cálculo' });
   }
 });
 
-router.put('/calculadora/:id', requireAuth, (req, res) => {
+router.put('/calculadora/:id', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -616,67 +663,36 @@ router.put('/calculadora/:id', requireAuth, (req, res) => {
     }
 
     const payload = normalizeCalculatorPayload(req.body || {});
-    const updateCalculation = db.prepare(`
-      UPDATE calculadora_calculos
-      SET origen = ?, cantidad_disponible = ?, tipo_cantidad = ?, cantidad_productos = ?, costo_total = ?, venta_total = ?, ganancia_estimada = ?, margen_ganancia = ?, saldo_restante = ?
-      WHERE id = ?
-    `);
-    const deleteProducts = db.prepare('DELETE FROM calculadora_productos WHERE calculo_id = ?');
-    const insertProduct = db.prepare(`
-      INSERT INTO calculadora_productos (
-        calculo_id, nombre, cantidad, costo_unitario, precio_venta_unitario, costo_total, venta_total, ganancia_estimada, margen_ganancia
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const history = await readCalculatorHistory();
+    const index = history.findIndex(item => Number(item.id) === id);
+    if (index < 0) {
+      return res.status(404).json({ ok: false, message: 'Cálculo no encontrado' });
+    }
 
-    const tx = db.transaction(() => {
-      updateCalculation.run(
-        payload.origen,
-        payload.cantidadDisponible,
-        payload.tipoCantidad,
-        payload.cantidadProductos,
-        payload.costoTotal,
-        payload.ventaTotal,
-        payload.gananciaEstimada,
-        payload.margenGanancia,
-        payload.saldoRestante,
-        id
-      );
-      deleteProducts.run(id);
-      payload.productos.forEach(producto => {
-        insertProduct.run(
-          id,
-          producto.name,
-          producto.qty,
-          producto.costUnit,
-          producto.priceUnit,
-          producto.costTotal,
-          producto.saleTotal,
-          producto.gananciaEstimada,
-          producto.margenGanancia
-        );
-      });
-    });
-
-    tx();
-    const row = db.prepare('SELECT * FROM calculadora_calculos WHERE id = ?').get(id);
-    return res.json({ ok: true, calculo: mapCalculatorRow(row) });
+    const calculo = buildStoredCalculatorRecord(payload, id, history[index].fecha);
+    history[index] = calculo;
+    await writeCalculatorHistory(history);
+    return res.json({ ok: true, calculo });
   } catch (error) {
+    console.error('Error actualizando cálculo:', error);
     return res.status(500).json({ ok: false, message: 'No se pudo actualizar el cálculo' });
   }
 });
 
-router.delete('/calculadora/:id', requireAuth, (req, res) => {
+router.delete('/calculadora/:id', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ ok: false, message: 'ID inválido' });
     }
 
-    const result = db.prepare('DELETE FROM calculadora_calculos WHERE id = ?').run(id);
-    if (!result.changes) {
+    const history = await readCalculatorHistory();
+    const next = history.filter(item => Number(item.id) !== id);
+    if (next.length === history.length) {
       return res.status(404).json({ ok: false, message: 'Cálculo no encontrado' });
     }
 
+    await writeCalculatorHistory(next);
     return res.json({ ok: true, deletedId: id });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudo eliminar el cálculo' });

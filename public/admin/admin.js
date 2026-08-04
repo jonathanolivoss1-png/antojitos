@@ -1,5 +1,5 @@
 (function () {
-  const ESTADOS = ['Confirmado', 'Entregado', 'Cancelado'];
+  const ESTADOS = ['Pendiente', 'Confirmado', 'Preparando', 'En camino', 'Entregado', 'Cancelado'];
 
   const loginWrap = document.getElementById('loginWrap');
   const adminApp = document.getElementById('adminApp');
@@ -8,6 +8,13 @@
   const adminPasswordInput = document.getElementById('adminPassword');
   const loginError = document.getElementById('loginError');
   const toast = document.getElementById('adminToast');
+  const heroBadgeInput = document.getElementById('heroBadgeInput');
+  const heroTitleInput = document.getElementById('heroTitleInput');
+  const heroTextInput = document.getElementById('heroTextInput');
+  const heroRecommendationsInput = document.getElementById('heroRecommendationsInput');
+  const saveContentBtn = document.getElementById('saveContentBtn');
+  const newPasswordInput = document.getElementById('newPasswordInput');
+  const saveConfigBtn = document.getElementById('saveConfigBtn');
 
   const tableBody = document.getElementById('adminOrdersTableBody');
   const exportCsvBtn = document.getElementById('exportCsvBtn');
@@ -64,7 +71,7 @@
   const ORDER_REFRESH_KEY = 'anafres_order_refresh_v1';
   const LEGACY_ORDERS_KEY = 'anafres_orders_v1';
   const CALCULATOR_DRAFT_KEY = 'anafres_calculator_draft_v1';
-  const DASHBOARD_REFRESH_MS = 6000;
+  const DASHBOARD_REFRESH_MS = 30000;
   let undoDeleteDayState = null;
   let undoDeleteDayTimer = null;
   let undoBanner = null;
@@ -326,8 +333,11 @@
 
   function statusClass(status) {
     return String(status || 'Pendiente')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
-      .replace(/\s+/g, '-');
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'pendiente';
   }
 
   function mapProducts(items) {
@@ -537,7 +547,7 @@
   }
 
   function syncDashboardRevenueFromKpi() {
-    const kpiEl = document.getElementById('kpiTotalVendido');
+    const kpiEl = document.getElementById('kpiVentasDia');
     if (!kpiEl) return;
     const parsed = parseMoneyFromText(kpiEl.textContent);
     if (Number.isFinite(parsed)) {
@@ -695,35 +705,62 @@
     renderCalculatorProducts();
   }
 
+// === HISTORIAL_DIARIO_PATCH_V1: pedidos históricos de solo lectura ===
   function renderOrders(orders) {
     if (!tableBody) return;
 
     if (!orders.length) {
-      tableBody.innerHTML = '<tr><td colspan="10">Todavía no hay pedidos registrados.</td></tr>';
+      tableBody.innerHTML =
+        '<tr><td colspan="10">Todavía no hay pedidos registrados para este día.</td></tr>';
       return;
     }
 
     tableBody.innerHTML = orders.map((order, index) => {
       const estado = order.estado || 'Pendiente';
-      const productos = Array.isArray(order.productos) ? order.productos : [];
+      const productos = Array.isArray(order.productos)
+        ? order.productos
+        : [];
+      const isArchived = Boolean(order.archivado);
+
+      const actions = isArchived
+        ? `
+            <button type="button" data-action="view">Ver</button>
+            <span class="meta-note">Archivado</span>
+          `
+        : `
+            <button type="button" data-action="view">Ver</button>
+            <button type="button" data-action="status">Editar estado</button>
+            <button type="button" data-action="delete">Eliminar</button>
+          `;
+
+      const productsHtml = productos.map(item => {
+        const quantity = Number(item?.qty ?? item?.cantidad ?? 1);
+        const name = item?.name || item?.nombre || 'Producto';
+        return `<span>${quantity}x ${escapeHtml(name)}</span>`;
+      }).join('');
 
       return `
-        <tr data-order-id="${order.id}">
+        <tr
+          data-order-id="${Number(order.id)}"
+          data-order-archived="${isArchived ? 'true' : 'false'}"
+        >
           <td>#${index + 1}</td>
-          <td>${order.cliente || '-'}</td>
-          <td>${order.telefono || '-'}</td>
-          <td>${order.direccion || '-'}</td>
-          <td>${order.tipoEntrega || '-'}</td>
-          <td><div class="admin-order-products">${productos.map(item => `<span>${Number(item.qty || 1)}x ${item.name || 'Producto'}</span>`).join('')}</div></td>
+          <td>${escapeHtml(order.cliente || '-')}</td>
+          <td>${escapeHtml(order.telefono || '-')}</td>
+          <td>${escapeHtml(order.direccion || '-')}</td>
+          <td>${escapeHtml(order.tipoEntrega || '-')}</td>
+          <td>
+            <div class="admin-order-products">${productsHtml}</div>
+          </td>
           <td>${formatMoney(order.total || 0)}</td>
-          <td><span class="status-chip ${statusClass(estado)}">${estado}</span></td>
+          <td>
+            <span class="status-chip ${statusClass(estado)}">
+              ${escapeHtml(estado)}
+            </span>
+          </td>
           <td>${formatDate(order.fecha)}</td>
           <td>
-            <div class="admin-row-actions">
-              <button type="button" data-action="view">Ver</button>
-              <button type="button" data-action="status">Editar estado</button>
-              <button type="button" data-action="delete">Eliminar</button>
-            </div>
+            <div class="admin-row-actions">${actions}</div>
           </td>
         </tr>
       `;
@@ -744,7 +781,6 @@
 
   function showOrderDetail(order) {
     if (!detailContent) return;
-
     const rows = [
       ['Cliente', order.cliente || '-'],
       ['Teléfono', order.telefono || '-'],
@@ -758,16 +794,20 @@
       ['Estado', order.estado || 'Pendiente']
     ];
 
-    detailContent.innerHTML = rows.map(([label, value]) => `
-      <div class="admin-modal-row">
-        <strong>${label}</strong>
-        <span>${value}</span>
-      </div>
-    `).join('');
+    detailContent.replaceChildren();
+    rows.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'admin-modal-row';
+      const strong = document.createElement('strong');
+      const span = document.createElement('span');
+      strong.textContent = String(label);
+      span.textContent = String(value);
+      row.append(strong, span);
+      detailContent.appendChild(row);
+    });
 
     openModal(detailModal);
   }
-
   function openStatusEditor(order) {
     if (!statusOrderIdInput || !statusSelect) return;
     statusOrderIdInput.value = String(order.id);
@@ -785,7 +825,7 @@
       ]);
 
       const stats = statsResult.stats || {};
-      dashboardRevenue = Number(stats.totalVendido || 0);
+      dashboardRevenue = Number(stats.ventasDia || 0);
       renderStats(stats);
       currentOrders = Array.isArray(pedidosResult.pedidos) ? pedidosResult.pedidos : [];
       renderOrders(currentOrders);
@@ -893,21 +933,58 @@
     });
   }
 
+// === HISTORIAL_DIARIO_PATCH_V1: no borrar historial archivado ===
+// === ELIMINAR_CUALQUIER_DIA_FRONTEND_V1 ===
   async function deleteOrdersByDay() {
     const date = getSelectedDateKey();
     const tzOffset = new Date().getTimezoneOffset();
+
     const confirmed = await requestDeleteDayConfirmation(date);
     if (!confirmed) return;
 
+    if (deleteDayBtn) {
+      deleteDayBtn.disabled = true;
+    }
+
     try {
-      const result = await api(`/api/pedidos/day?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`, {
-        method: 'DELETE'
-      });
-      showToast(`Se eliminaron ${Number(result.deletedCount || 0)} pedidos del día`);
-      startUndoDeleteDay(result.date, Array.isArray(result.deletedOrders) ? result.deletedOrders : []);
-      await loadDashboardData();
+      const result = await api(
+        `/api/pedidos/day?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`,
+        { method: 'DELETE' }
+      );
+
+      const total = Number(result.deletedCount || 0);
+      const active = Number(result.activeDeletedCount || 0);
+      const archived = Number(result.archivedDeletedCount || 0);
+
+      if (total === 0) {
+        showToast(`No había pedidos registrados el ${date}`, true);
+      } else {
+        showToast(
+          `Se eliminaron ${total} pedidos: ${active} activos y ${archived} archivados`
+        );
+      }
+
+      startUndoDeleteDay(
+        result.date,
+        Array.isArray(result.deletedOrders)
+          ? result.deletedOrders
+          : []
+      );
+
+      await Promise.all([
+        loadDashboardData(),
+        loadSoldProductsData()
+      ]);
     } catch (error) {
-      showToast(error.message || 'No se pudieron eliminar pedidos del día', true);
+      showToast(
+        error.message ||
+        'No se pudieron eliminar los pedidos del día',
+        true
+      );
+    } finally {
+      if (deleteDayBtn) {
+        deleteDayBtn.disabled = false;
+      }
     }
   }
 
@@ -1024,6 +1101,7 @@
       if (isAuthed) {
         await loadDashboardData();
         await loadSoldProductsData();
+        await loadEditableSettings();
         await hydrateCalculatorDraftFromServer();
         startAdminEventsStream();
         startRefresh();
@@ -1062,6 +1140,7 @@
       setAuthenticated(true);
       await loadDashboardData();
       await loadSoldProductsData();
+      await loadEditableSettings();
       await hydrateCalculatorDraftFromServer();
       startAdminEventsStream();
       startRefresh();
@@ -1087,6 +1166,79 @@
     showToast('Sesión cerrada');
   }
 
+  async function loadEditableSettings() {
+    try {
+      const result = await api('/api/admin/content');
+      const content = result?.content || {};
+      if (heroBadgeInput) heroBadgeInput.value = String(content.heroBadge || '');
+      if (heroTitleInput) heroTitleInput.value = String(content.heroTitle || '');
+      if (heroTextInput) heroTextInput.value = String(content.heroText || '');
+      if (heroRecommendationsInput) {
+        heroRecommendationsInput.value = Array.isArray(content.recommendations)
+          ? content.recommendations.join('\n')
+          : '';
+      }
+    } catch (error) {
+      if (error.status !== 401) {
+        console.warn('No se pudieron cargar los textos editables:', error);
+      }
+    }
+  }
+
+  async function saveEditableContent() {
+    const recommendations = String(heroRecommendationsInput?.value || '')
+      .split(/\r?\n/)
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    try {
+      const result = await api('/api/admin/content', {
+        method: 'PUT',
+        body: JSON.stringify({
+          content: {
+            heroBadge: String(heroBadgeInput?.value || '').trim(),
+            heroTitle: String(heroTitleInput?.value || '').trim(),
+            heroText: String(heroTextInput?.value || '').trim(),
+            recommendations
+          }
+        })
+      });
+
+      const content = result?.content || {};
+      if (heroBadgeInput) heroBadgeInput.value = String(content.heroBadge || '');
+      if (heroTitleInput) heroTitleInput.value = String(content.heroTitle || '');
+      if (heroTextInput) heroTextInput.value = String(content.heroText || '');
+      if (heroRecommendationsInput) {
+        heroRecommendationsInput.value = Array.isArray(content.recommendations)
+          ? content.recommendations.join('\n')
+          : '';
+      }
+      showToast('Textos guardados correctamente');
+    } catch (error) {
+      showToast(error.message || 'No se pudieron guardar los textos', true);
+    }
+  }
+
+  async function saveAdminPassword() {
+    const password = String(newPasswordInput?.value || '');
+    if (password.length < 8) {
+      showToast('La nueva contraseña debe tener al menos 8 caracteres', true);
+      return;
+    }
+
+    try {
+      await api('/api/admin/password', {
+        method: 'PUT',
+        body: JSON.stringify({ password })
+      });
+      if (newPasswordInput) newPasswordInput.value = '';
+      showToast('Contraseña actualizada');
+    } catch (error) {
+      showToast(error.message || 'No se pudo actualizar la contraseña', true);
+    }
+  }
+
+// === HISTORIAL_DIARIO_PATCH_V1: protección de registros archivados ===
   async function handleTableActions(event) {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
@@ -1095,12 +1247,27 @@
     if (!row) return;
 
     const id = Number(row.dataset.orderId);
-    const order = currentOrders.find(item => Number(item.id) === id);
+    const isArchived = row.dataset.orderArchived === 'true';
+
+    const order = currentOrders.find(item =>
+      Number(item.id) === id &&
+      Boolean(item.archivado) === isArchived
+    );
+
     if (!order) return;
 
     const action = button.dataset.action;
+
     if (action === 'view') {
       showOrderDetail(order);
+      return;
+    }
+
+    if (isArchived) {
+      showToast(
+        'Los pedidos archivados son historial de solo lectura.',
+        true
+      );
       return;
     }
 
@@ -1110,11 +1277,17 @@
     }
 
     if (action === 'delete') {
-      const confirmed = window.confirm(`¿Eliminar el pedido #${order.id}?`);
+      const confirmed = window.confirm(
+        `¿Eliminar el pedido #${order.id}?`
+      );
+
       if (!confirmed) return;
 
       try {
-        await api(`/api/pedidos/${order.id}`, { method: 'DELETE' });
+        await api(`/api/pedidos/${order.id}`, {
+          method: 'DELETE'
+        });
+
         removeLegacyOrderById(order.id);
         showToast('Pedido eliminado');
         await loadDashboardData();
@@ -1297,6 +1470,18 @@
         }
         saveCalculatorDraft();
         renderCalculatorProducts();
+      });
+    }
+
+    if (saveContentBtn) {
+      saveContentBtn.addEventListener('click', saveEditableContent);
+    }
+    if (saveConfigBtn) {
+      saveConfigBtn.addEventListener('click', saveAdminPassword);
+    }
+    if (newPasswordInput) {
+      newPasswordInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') saveAdminPassword();
       });
     }
 

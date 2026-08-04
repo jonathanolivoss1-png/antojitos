@@ -81,32 +81,36 @@ async function initializeUsersTable() {
     return;
   }
 
-  const passwordMatches = await bcrypt.compare(
-    adminPassword,
-    existingUser.password
-  );
+  const shouldResetPassword =
+    process.env.RESET_ADMIN_PASSWORD_ON_START === "true";
 
-  if (!passwordMatches) {
-    const passwordHash = await bcrypt.hash(adminPassword, 10);
-
-    if (pgPool) {
-      await pgPool.query(
-        `
-          UPDATE usuarios
-          SET password = $1
-          WHERE usuario = $2
-        `,
-        [passwordHash, adminUser]
-      );
-    } else {
-      db.prepare(
-        `UPDATE usuarios SET password = ? WHERE usuario = ?`
-      ).run(passwordHash, adminUser);
-    }
-
-    console.log(
-      `Contraseña de admin actualizada en ${pgPool ? 'PostgreSQL' : 'SQLite'}.`
+  if (shouldResetPassword) {
+    const passwordMatches = await bcrypt.compare(
+      adminPassword,
+      existingUser.password
     );
+
+    if (!passwordMatches) {
+      const passwordHash = await bcrypt.hash(adminPassword, 10);
+      if (pgPool) {
+        await pgPool.query(
+          `
+            UPDATE usuarios
+            SET password = $1
+            WHERE usuario = $2
+          `,
+          [passwordHash, adminUser]
+        );
+      } else {
+        db.prepare(
+          `UPDATE usuarios SET password = ? WHERE usuario = ?`
+        ).run(passwordHash, adminUser);
+      }
+
+      console.log(
+        `Contraseña de admin restablecida en ${pgPool ? 'PostgreSQL' : 'SQLite'}.`
+      );
+    }
   }
 }
 

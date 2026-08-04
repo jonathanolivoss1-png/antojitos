@@ -267,7 +267,7 @@ function archiveOrdersForDate(dateKey) {
         order.cliente || '',
         order.telefono || '',
         order.direccion || '',
-        order.tipoEntrega || '',
+        order.tipo_entrega || order.tipoEntrega || '',
         order.productos || '[]',
         Number(order.subtotal || 0),
         Number(order.envio || 0),
@@ -572,17 +572,22 @@ async function initDatabase() {
 
   const adminUser = 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD || process.env.ADMIN_PASS || '123456';
-  const hash = bcrypt.hashSync(adminPassword, 10);
-
   const existing = db.prepare('SELECT id, password FROM usuarios WHERE usuario = ?').get(adminUser);
+  const shouldResetAdminPassword =
+    process.env.RESET_ADMIN_PASSWORD_ON_START === 'true';
+
   if (!existing) {
+    const hash = bcrypt.hashSync(adminPassword, 10);
     db.prepare('INSERT INTO usuarios (usuario, password) VALUES (?, ?)').run(adminUser, hash);
     console.log('Usuario admin inicial creado.');
-  } else if (existing.password !== hash) {
+  } else if (
+    shouldResetAdminPassword &&
+    !bcrypt.compareSync(adminPassword, existing.password)
+  ) {
+    const hash = bcrypt.hashSync(adminPassword, 10);
     db.prepare('UPDATE usuarios SET password = ? WHERE usuario = ?').run(hash, adminUser);
-    console.log('Contraseña de usuario admin actualizada.');
+    console.log('Contraseña de usuario admin restablecida.');
   }
-
   await seedGlobalConfigIfMissing();
 }
 
