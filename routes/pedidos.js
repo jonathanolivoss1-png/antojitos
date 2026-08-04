@@ -753,8 +753,33 @@ router.post('/', async (req, res) => {
       ]
     );
 
-    broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'created' });
-    return res.status(201).json({ ok: true, pedido: mapPedido(result.rows[0]) });
+    const createdOrder =
+      mapPedido(result.rows[0]);
+
+    // NEW_ORDER_ALERTS_EVENT_V1
+    broadcastAdminEvent(
+      'orders-updated',
+      {
+        ts: Date.now(),
+        reason: 'created',
+        order: {
+          id: createdOrder.id,
+          cliente:
+            createdOrder.cliente,
+          tipoEntrega:
+            createdOrder.tipoEntrega,
+          total:
+            createdOrder.total,
+          fecha:
+            createdOrder.fecha
+        }
+      }
+    );
+
+    return res.status(201).json({
+      ok: true,
+      pedido: createdOrder
+    });
   } catch (error) {
     console.error('Error guardando pedido en PostgreSQL:', error);
     return res.status(500).json({ ok: false, message: 'No se pudo guardar el pedido' });

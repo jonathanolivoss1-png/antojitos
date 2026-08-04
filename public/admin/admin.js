@@ -6,6 +6,17 @@
   const adminApp = document.getElementById('adminApp');
   const loginBtn = document.getElementById('loginBtn');
   const logoutBtn = document.getElementById('logoutBtn');
+  const orderAlertsToggleBtn =
+    document.getElementById('orderAlertsToggleBtn');
+  const orderAlertsTestBtn =
+    document.getElementById('orderAlertsTestBtn');
+  const orderAlertsVolumeWrap =
+    document.getElementById('orderAlertsVolumeWrap');
+  const orderAlertsVolumeInput =
+    document.getElementById('orderAlertsVolumeInput');
+  const orderAlertsStatus =
+    document.getElementById('orderAlertsStatus');
+
   const adminPasswordInput = document.getElementById('adminPassword');
   const loginError = document.getElementById('loginError');
   const toast = document.getElementById('adminToast');
@@ -102,6 +113,17 @@
   let calculatorProducts = [];
   let refreshTimer = null;
   let adminEventsStream = null;
+  const ORDER_ALERTS_SETTINGS_KEY =
+    'anafres_order_alerts_settings_v1';
+
+  let orderAlertAudioContext = null;
+  let orderAlertTitleTimer = null;
+  let orderAlertOriginalTitle =
+    document.title;
+
+  let orderAlertsSettings =
+    readOrderAlertsSettings();
+
   let soldProductsFilter = null;
   let dashboardRevenue = 0;
   let manualIncomeValue = 0;
@@ -334,6 +356,780 @@
 
   function syncLegacyOrdersFromApiOrders(orders) {
     return;
+  }
+
+  // === NEW_ORDER_ALERTS_CLIENT_V1 ===
+  function readOrderAlertsSettings() {
+    const defaults = {
+      enabled: false,
+      volume: 0.75,
+      lastEventKey: ''
+    };
+
+    try {
+      const parsed = JSON.parse(
+        localStorage.getItem(
+          ORDER_ALERTS_SETTINGS_KEY
+        ) || 'null'
+      );
+
+      if (
+        !parsed ||
+        typeof parsed !== 'object'
+      ) {
+        return defaults;
+      }
+
+      return {
+        enabled:
+          Boolean(parsed.enabled),
+
+        volume:
+          Math.min(
+            1,
+            Math.max(
+              0,
+              Number(parsed.volume ?? 0.75)
+            )
+          ),
+
+        lastEventKey:
+          String(
+            parsed.lastEventKey || ''
+          )
+      };
+    } catch {
+      return defaults;
+    }
+  }
+
+  function saveOrderAlertsSettings() {
+    try {
+      localStorage.setItem(
+        ORDER_ALERTS_SETTINGS_KEY,
+        JSON.stringify(
+          orderAlertsSettings
+        )
+      );
+    } catch {
+      // El sonido puede seguir funcionando
+      // aunque el almacenamiento esté bloqueado.
+    }
+  }
+
+  function getNotificationPermissionState() {
+    if (
+      !('Notification' in window)
+    ) {
+      return 'unsupported';
+    }
+
+    return Notification.permission;
+  }
+
+  function updateOrderAlertsUi() {
+    const enabled =
+      Boolean(
+        orderAlertsSettings.enabled
+      );
+
+    const permission =
+      getNotificationPermissionState();
+
+    if (orderAlertsToggleBtn) {
+      orderAlertsToggleBtn.classList.toggle(
+        'is-enabled',
+        enabled
+      );
+
+      orderAlertsToggleBtn.setAttribute(
+        'aria-pressed',
+        String(enabled)
+      );
+
+      orderAlertsToggleBtn.textContent =
+        enabled
+          ? '🔕 Desactivar alertas'
+          : '🔔 Activar alertas';
+    }
+
+    if (orderAlertsTestBtn) {
+      orderAlertsTestBtn.classList.toggle(
+        'hidden',
+        !enabled
+      );
+    }
+
+    if (orderAlertsVolumeWrap) {
+      orderAlertsVolumeWrap.classList.toggle(
+        'hidden',
+        !enabled
+      );
+    }
+
+    if (orderAlertsVolumeInput) {
+      orderAlertsVolumeInput.value =
+        String(
+          orderAlertsSettings.volume
+        );
+    }
+
+    if (!orderAlertsStatus) {
+      return;
+    }
+
+    if (!enabled) {
+      orderAlertsStatus.textContent =
+        'Las alertas están desactivadas en este dispositivo.';
+
+      return;
+    }
+
+    if (permission === 'granted') {
+      orderAlertsStatus.textContent =
+        'Sonido y notificaciones del sistema activos.';
+
+      return;
+    }
+
+    if (permission === 'denied') {
+      orderAlertsStatus.textContent =
+        'Sonido activo. Las notificaciones están bloqueadas por el navegador.';
+
+      return;
+    }
+
+    if (permission === 'unsupported') {
+      orderAlertsStatus.textContent =
+        'Sonido activo. Este navegador no admite notificaciones del sistema.';
+
+      return;
+    }
+
+    orderAlertsStatus.textContent =
+      'Sonido activo. Falta autorizar las notificaciones del sistema.';
+  }
+
+  async function ensureOrderAlertAudioContext() {
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+    if (!AudioContextClass) {
+      return null;
+    }
+
+    if (!orderAlertAudioContext) {
+      orderAlertAudioContext =
+        new AudioContextClass();
+    }
+
+    if (
+      orderAlertAudioContext.state ===
+      'suspended'
+    ) {
+      await orderAlertAudioContext
+        .resume()
+        .catch(() => {});
+    }
+
+    return orderAlertAudioContext;
+  }
+
+  async function playNewOrderSound() {
+    if (
+      !orderAlertsSettings.enabled
+    ) {
+      return;
+    }
+
+    const context =
+      await ensureOrderAlertAudioContext();
+
+    if (!context) {
+      return;
+    }
+
+    const volume =
+      Math.min(
+        1,
+        Math.max(
+          0,
+          Number(
+            orderAlertsSettings.volume ||
+            0
+          )
+        )
+      );
+
+    if (volume <= 0) {
+      return;
+    }
+
+    const now = context.currentTime;
+
+    [
+      {
+        frequency: 740,
+        start: 0,
+        duration: 0.16
+      },
+      {
+        frequency: 988,
+        start: 0.18,
+        duration: 0.18
+      },
+      {
+        frequency: 1318,
+        start: 0.39,
+        duration: 0.28
+      }
+    ].forEach(note => {
+      const oscillator =
+        context.createOscillator();
+
+      const gain =
+        context.createGain();
+
+      oscillator.type = 'sine';
+
+      oscillator.frequency.setValueAtTime(
+        note.frequency,
+        now + note.start
+      );
+
+      gain.gain.setValueAtTime(
+        0.0001,
+        now + note.start
+      );
+
+      gain.gain.exponentialRampToValueAtTime(
+        Math.max(
+          0.0001,
+          volume * 0.28
+        ),
+        now + note.start + 0.025
+      );
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        now +
+          note.start +
+          note.duration
+      );
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+
+      oscillator.start(
+        now + note.start
+      );
+
+      oscillator.stop(
+        now +
+          note.start +
+          note.duration +
+          0.03
+      );
+    });
+  }
+
+  async function requestOrderNotificationPermission() {
+    if (
+      !('Notification' in window)
+    ) {
+      return 'unsupported';
+    }
+
+    if (
+      Notification.permission !==
+      'default'
+    ) {
+      return Notification.permission;
+    }
+
+    try {
+      return await Notification
+        .requestPermission();
+    } catch {
+      return Notification.permission;
+    }
+  }
+
+  async function ensureOrderAlertServiceWorker() {
+    if (
+      !('serviceWorker' in navigator) ||
+      !window.isSecureContext
+    ) {
+      return null;
+    }
+
+    try {
+      let registration =
+        await navigator.serviceWorker
+          .getRegistration('/');
+
+      if (!registration) {
+        registration =
+          await navigator.serviceWorker
+            .register(
+              '/sw.js',
+              {
+                scope: '/'
+              }
+            );
+      }
+
+      return await navigator
+        .serviceWorker
+        .ready;
+    } catch (error) {
+      console.warn(
+        'No se pudo preparar el service worker para alertas',
+        error
+      );
+
+      return null;
+    }
+  }
+
+  function flashNewOrderTitle(orderId) {
+    if (orderAlertTitleTimer) {
+      clearInterval(
+        orderAlertTitleTimer
+      );
+    }
+
+    orderAlertOriginalTitle =
+      orderAlertOriginalTitle ||
+      document.title;
+
+    let showAlert = true;
+    let repetitions = 0;
+
+    document.title =
+      `🔔 Nuevo pedido #${orderId}`;
+
+    orderAlertTitleTimer =
+      setInterval(
+        () => {
+          showAlert = !showAlert;
+
+          document.title =
+            showAlert
+              ? `🔔 Nuevo pedido #${orderId}`
+              : orderAlertOriginalTitle;
+
+          repetitions += 1;
+
+          if (repetitions >= 12) {
+            clearInterval(
+              orderAlertTitleTimer
+            );
+
+            orderAlertTitleTimer =
+              null;
+
+            document.title =
+              orderAlertOriginalTitle;
+          }
+        },
+        850
+      );
+  }
+
+  function focusOrderFromNotification(
+    orderId
+  ) {
+    window.focus();
+
+    const row =
+      document.querySelector(
+        `tr[data-order-id="${CSS.escape(
+          String(orderId || '')
+        )}"]`
+      );
+
+    if (!row) {
+      return;
+    }
+
+    row.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    });
+
+    row.animate(
+      [
+        {
+          outline:
+            '4px solid rgba(249,168,37,0.9)',
+          transform:
+            'scale(1.01)'
+        },
+        {
+          outline:
+            '0 solid transparent',
+          transform:
+            'scale(1)'
+        }
+      ],
+      {
+        duration: 1800,
+        easing: 'ease-out'
+      }
+    );
+  }
+
+  async function showOrderSystemNotification(
+    order
+  ) {
+    if (
+      getNotificationPermissionState() !==
+      'granted'
+    ) {
+      return;
+    }
+
+    const orderId =
+      String(
+        order?.id || 'nuevo'
+      );
+
+    const title =
+      `Nuevo pedido #${orderId}`;
+
+    const customer =
+      String(
+        order?.cliente ||
+        'Cliente sin nombre'
+      );
+
+    const delivery =
+      String(
+        order?.tipoEntrega ||
+        'Pedido nuevo'
+      );
+
+    const total =
+      formatMoney(
+        Number(order?.total || 0)
+      );
+
+    const body =
+      `${customer} · ${delivery} · ${total}`;
+
+    const targetUrl =
+      `/admin/index.html?pedido=${encodeURIComponent(
+        orderId
+      )}`;
+
+    const options = {
+      body,
+      tag:
+        `anafres-new-order-${orderId}`,
+      renotify: true,
+      data: {
+        url: targetUrl,
+        orderId
+      }
+    };
+
+    const registration =
+      await ensureOrderAlertServiceWorker();
+
+    if (
+      registration &&
+      typeof registration.showNotification ===
+      'function'
+    ) {
+      await registration
+        .showNotification(
+          title,
+          options
+        )
+        .catch(error => {
+          console.warn(
+            'No se pudo mostrar la notificación mediante el service worker',
+            error
+          );
+        });
+
+      return;
+    }
+
+    try {
+      const notification =
+        new Notification(
+          title,
+          options
+        );
+
+      notification.onclick = () => {
+        notification.close();
+
+        focusOrderFromNotification(
+          orderId
+        );
+      };
+    } catch (error) {
+      console.warn(
+        'No se pudo mostrar la notificación del sistema',
+        error
+      );
+    }
+  }
+
+  async function notifyNewOrder(
+    order,
+    options = {}
+  ) {
+    if (
+      !orderAlertsSettings.enabled
+    ) {
+      return;
+    }
+
+    const orderId =
+      String(
+        order?.id ||
+        'nuevo'
+      );
+
+    const eventKey =
+      String(
+        options.eventKey ||
+        orderId
+      );
+
+    if (
+      !options.isTest &&
+      eventKey &&
+      eventKey ===
+        orderAlertsSettings.lastEventKey
+    ) {
+      return;
+    }
+
+    if (
+      !options.isTest &&
+      eventKey
+    ) {
+      orderAlertsSettings.lastEventKey =
+        eventKey;
+
+      saveOrderAlertsSettings();
+    }
+
+    await playNewOrderSound();
+
+    flashNewOrderTitle(
+      orderId
+    );
+
+    await showOrderSystemNotification(
+      order
+    );
+
+    showToast(
+      options.isTest
+        ? 'Alerta de prueba reproducida'
+        : `¡Nuevo pedido #${orderId}!`
+    );
+  }
+
+  function parseAdminEventPayload(event) {
+    try {
+      return JSON.parse(
+        event?.data || '{}'
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  async function handleOrdersUpdatedEvent(
+    event
+  ) {
+    const payload =
+      parseAdminEventPayload(event);
+
+    if (
+      !adminApp.classList.contains(
+        'hidden'
+      )
+    ) {
+      await loadDashboardData();
+      await loadSoldProductsData();
+    }
+
+    if (
+      payload?.reason !==
+      'created'
+    ) {
+      return;
+    }
+
+    const order =
+      payload?.order &&
+      typeof payload.order ===
+        'object'
+        ? payload.order
+        : {};
+
+    const eventKey =
+      String(
+        order.id ||
+        payload.ts ||
+        ''
+      );
+
+    await notifyNewOrder(
+      order,
+      {
+        eventKey
+      }
+    );
+  }
+
+  async function toggleOrderAlerts() {
+    if (
+      orderAlertsSettings.enabled
+    ) {
+      orderAlertsSettings.enabled =
+        false;
+
+      saveOrderAlertsSettings();
+      updateOrderAlertsUi();
+
+      showToast(
+        'Alertas de pedidos desactivadas'
+      );
+
+      return;
+    }
+
+    orderAlertsSettings.enabled =
+      true;
+
+    await ensureOrderAlertAudioContext();
+
+    const permission =
+      await requestOrderNotificationPermission();
+
+    if (
+      permission === 'granted'
+    ) {
+      await ensureOrderAlertServiceWorker();
+    }
+
+    saveOrderAlertsSettings();
+    updateOrderAlertsUi();
+
+    await playNewOrderSound();
+
+    if (permission === 'granted') {
+      showToast(
+        'Sonido y notificaciones activados'
+      );
+    } else if (permission === 'denied') {
+      showToast(
+        'Sonido activado; el navegador bloqueó las notificaciones',
+        true
+      );
+    } else {
+      showToast(
+        'Sonido de pedidos activado'
+      );
+    }
+  }
+
+  async function testOrderAlert() {
+    await notifyNewOrder(
+      {
+        id: 'PRUEBA',
+        cliente:
+          'Cliente de prueba',
+        tipoEntrega:
+          'Entrega a domicilio',
+        total: 125
+      },
+      {
+        isTest: true,
+        eventKey:
+          `test-${Date.now()}`
+      }
+    );
+  }
+
+  function bindOrderAlertControls() {
+    updateOrderAlertsUi();
+
+    if (orderAlertsToggleBtn) {
+      orderAlertsToggleBtn.addEventListener(
+        'click',
+        () => {
+          void toggleOrderAlerts();
+        }
+      );
+    }
+
+    if (orderAlertsTestBtn) {
+      orderAlertsTestBtn.addEventListener(
+        'click',
+        () => {
+          void testOrderAlert();
+        }
+      );
+    }
+
+    if (orderAlertsVolumeInput) {
+      orderAlertsVolumeInput.addEventListener(
+        'input',
+        () => {
+          orderAlertsSettings.volume =
+            Math.min(
+              1,
+              Math.max(
+                0,
+                Number(
+                  orderAlertsVolumeInput.value ||
+                  0
+                )
+              )
+            );
+
+          saveOrderAlertsSettings();
+          updateOrderAlertsUi();
+        }
+      );
+
+      orderAlertsVolumeInput.addEventListener(
+        'change',
+        () => {
+          if (
+            orderAlertsSettings.enabled
+          ) {
+            void playNewOrderSound();
+          }
+        }
+      );
+    }
+
+    document.addEventListener(
+      'pointerdown',
+      () => {
+        if (
+          orderAlertsSettings.enabled
+        ) {
+          void ensureOrderAlertAudioContext();
+        }
+      },
+      {
+        once: true,
+        passive: true
+      }
+    );
   }
 
   function showToast(message, isError) {
@@ -2069,12 +2865,14 @@
     }
 
     adminEventsStream = new EventSource('/api/admin/events');
-    adminEventsStream.addEventListener('orders-updated', () => {
-      if (!adminApp.classList.contains('hidden')) {
-        loadDashboardData();
-        loadSoldProductsData();
+    adminEventsStream.addEventListener(
+      'orders-updated',
+      event => {
+        void handleOrdersUpdatedEvent(
+          event
+        );
       }
-    });
+    );
     adminEventsStream.addEventListener('sold-products-separation-updated', () => {
       if (!adminApp.classList.contains('hidden')) {
         loadSoldProductsData();
@@ -2323,6 +3121,8 @@
   }
 
   function bindEvents() {
+    bindOrderAlertControls();
+
     bindAdvancedAdminFeatures();
     if (dayFilterInput && !dayFilterInput.value) {
       dayFilterInput.value = getTodayDateKey();

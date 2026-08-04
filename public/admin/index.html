@@ -809,6 +809,75 @@
       }
     }
 
+
+    /* NEW_ORDER_ALERTS_UI_V1 */
+    .order-alerts-control {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      padding: 0.55rem;
+      border-radius: 16px;
+      background: rgba(249,168,37,0.1);
+      border: 1px solid rgba(249,168,37,0.2);
+    }
+
+    .order-alerts-control .ghost-btn {
+      min-height: 42px;
+    }
+
+    .order-alerts-toggle.is-enabled {
+      background: rgba(46,125,50,0.12);
+      border-color: rgba(46,125,50,0.34);
+      color: #1b5e20;
+    }
+
+    .order-alerts-volume {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      color: #6d4c41;
+      font-size: 0.82rem;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .order-alerts-volume input {
+      width: 92px;
+      accent-color: #c73e1d;
+      cursor: pointer;
+    }
+
+    .order-alerts-status {
+      width: 100%;
+      min-height: 1.1rem;
+      color: #7c5e52;
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    @media (max-width: 640px) {
+      .order-alerts-control {
+        width: 100%;
+        justify-content: stretch;
+      }
+
+      .order-alerts-volume {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .order-alerts-volume input {
+        flex: 1;
+      }
+
+      .order-alerts-status {
+        text-align: left;
+      }
+    }
+
 </style>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
@@ -838,6 +907,49 @@
         <p>Los cambios que hagas aquí actualizan el sitio principal sin tocar código. Los cambios se guardan globalmente en el servidor y se reflejan en el sitio público.</p>
       </div>
       <div class="actions">
+        <!-- NEW_ORDER_ALERTS_UI_V1 -->
+        <div class="order-alerts-control">
+          <button
+            class="ghost-btn order-alerts-toggle"
+            id="orderAlertsToggleBtn"
+            type="button"
+            aria-pressed="false"
+          >
+            🔔 Activar alertas
+          </button>
+
+          <button
+            class="ghost-btn hidden"
+            id="orderAlertsTestBtn"
+            type="button"
+          >
+            Probar alerta
+          </button>
+
+          <label
+            class="order-alerts-volume hidden"
+            id="orderAlertsVolumeWrap"
+            for="orderAlertsVolumeInput"
+          >
+            Volumen
+            <input
+              id="orderAlertsVolumeInput"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value="0.75"
+            />
+          </label>
+
+          <span
+            class="order-alerts-status"
+            id="orderAlertsStatus"
+            role="status"
+            aria-live="polite"
+          ></span>
+        </div>
+
         <a class="ghost-btn" href="../index.html">Ver sitio</a>
         <button class="btn" id="logoutBtn" type="button">Cerrar sesión</button>
       </div>
@@ -1460,7 +1572,7 @@
       </div>
     </div>
   </div>
-  <script src="admin.js?v=estados-confirmado-entregado-cancelado-v1"></script>
+  <script src="admin.js?v=alertas-pedidos-v1"></script>
 <script src="catalog-admin.js"></script>
   <script src="/pwa.js" defer></script>
 
