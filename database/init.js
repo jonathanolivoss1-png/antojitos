@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const bcrypt = require('bcryptjs');
 const db = require('./db');
+const pgPool = require('../postgres');
+const usePostgres = Boolean(pgPool);
 const { broadcastAdminEvent } = require('../realtime/events');
 
 const CONFIG_KEYS = {
@@ -159,12 +161,23 @@ const DEFAULT_GLOBAL_PRODUCTS = [
 const DAILY_ARCHIVE_STATE_KEY = 'daily_archive_state_v1';
 const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
 
-function upsertConfig(clave, valor) {
+async function upsertConfig(clave, valor) {
+  const payload = JSON.stringify(valor);
+
+  if (usePostgres) {
+    await pgPool.query(`
+      INSERT INTO configuracion (clave, valor)
+      VALUES ($1, $2::jsonb)
+      ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor
+    `, [clave, payload]);
+    return;
+  }
+
   db.prepare(`
     INSERT INTO configuracion (clave, valor)
     VALUES (?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
-  `).run(clave, JSON.stringify(valor));
+  `).run(clave, payload);
 }
 
 function getMexicoCityDateKey(date = new Date()) {
@@ -192,7 +205,18 @@ function buildUtcRangeFromDateKey(dateKey, tzOffsetMinutes) {
   };
 }
 
-function readDailyArchiveState() {
+async function readDailyArchiveState() {
+  if (usePostgres) {
+    const result = await pgPool.query(
+      'SELECT valor FROM configuracion WHERE clave = $1 LIMIT 1',
+      [DAILY_ARCHIVE_STATE_KEY]
+    );
+
+    const value = result.rows[0]?.valor;
+    if (!value) return { lastProcessedDate: null };
+    return typeof value === 'object' ? value : JSON.parse(String(value)) || {};
+  }
+
   const row = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(DAILY_ARCHIVE_STATE_KEY);
   if (!row?.valor) return { lastProcessedDate: null };
   try {
@@ -203,8 +227,8 @@ function readDailyArchiveState() {
   }
 }
 
-function writeDailyArchiveState(value) {
-  upsertConfig(DAILY_ARCHIVE_STATE_KEY, value);
+async function writeDailyArchiveState(value) {
+  await upsertConfig(DAILY_ARCHIVE_STATE_KEY, value);
 }
 
 function archiveOrdersForDate(dateKey) {
@@ -217,17 +241,29 @@ function archiveOrdersForDate(dateKey) {
     return { archivedCount: 0 };
   }
 
-  const insert = db.prepare(`
-    INSERT INTO pedidos_archivados (
-      fecha, clienteToken, cliente, telefono, direccion, tipoEntrega, productos, subtotal, envio, total, estado, creado_en, origen_pedido_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+ const insert = db.prepare(`
+  INSERT INTO pedidos_archivados (
+    fecha,
+    cliente_token,
+    cliente,
+    telefono,
+    direccion,
+    tipo_entrega,
+    productos,
+    subtotal,
+    envio,
+    total,
+    estado,
+    creado_en,
+    origen_pedido_id
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
 
   const tx = db.transaction(items => {
     items.forEach(order => {
       insert.run(
         dateKey,
-        order.clienteToken || '',
+        order.cliente_token || order.clienteToken || '',
         order.cliente || '',
         order.telefono || '',
         order.direccion || '',
@@ -256,23 +292,43 @@ function archiveOrdersForDate(dateKey) {
   return { archivedCount: Number(result.changes || 0) };
 }
 
-function seedGlobalConfigIfMissing() {
+async function seedGlobalConfigIfMissing() {
+  if (usePostgres) {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS configuracion (
+        clave TEXT PRIMARY KEY,
+        valor JSONB NOT NULL
+      )
+    `);
+
+    const result = await pgPool.query(
+      'SELECT clave FROM configuracion WHERE clave = ANY($1)',
+      [[CONFIG_KEYS.content, CONFIG_KEYS.promotions, CONFIG_KEYS.products]]
+    );
+
+    const existingKeys = new Set(result.rows.map(row => row.clave));
+    if (!existingKeys.has(CONFIG_KEYS.content)) await upsertConfig(CONFIG_KEYS.content, DEFAULT_GLOBAL_CONTENT);
+    if (!existingKeys.has(CONFIG_KEYS.promotions)) await upsertConfig(CONFIG_KEYS.promotions, DEFAULT_GLOBAL_PROMOTIONS);
+    if (!existingKeys.has(CONFIG_KEYS.products)) await upsertConfig(CONFIG_KEYS.products, DEFAULT_GLOBAL_PRODUCTS);
+    return;
+  }
+
   const hasContent = db.prepare('SELECT 1 FROM configuracion WHERE clave = ? LIMIT 1').get(CONFIG_KEYS.content);
   const hasPromotions = db.prepare('SELECT 1 FROM configuracion WHERE clave = ? LIMIT 1').get(CONFIG_KEYS.promotions);
   const hasProducts = db.prepare('SELECT 1 FROM configuracion WHERE clave = ? LIMIT 1').get(CONFIG_KEYS.products);
 
-  if (!hasContent) upsertConfig(CONFIG_KEYS.content, DEFAULT_GLOBAL_CONTENT);
-  if (!hasPromotions) upsertConfig(CONFIG_KEYS.promotions, DEFAULT_GLOBAL_PROMOTIONS);
-  if (!hasProducts) upsertConfig(CONFIG_KEYS.products, DEFAULT_GLOBAL_PRODUCTS);
+  if (!hasContent) await upsertConfig(CONFIG_KEYS.content, DEFAULT_GLOBAL_CONTENT);
+  if (!hasPromotions) await upsertConfig(CONFIG_KEYS.promotions, DEFAULT_GLOBAL_PROMOTIONS);
+  if (!hasProducts) await upsertConfig(CONFIG_KEYS.products, DEFAULT_GLOBAL_PRODUCTS);
 }
 
-function maybeArchiveAndResetDailyOrders() {
+async function maybeArchiveAndResetDailyOrders() {
   const todayKey = getMexicoCityDateKey();
-  const state = readDailyArchiveState();
+  const state = await readDailyArchiveState();
   const lastProcessedDate = state?.lastProcessedDate;
 
   if (!lastProcessedDate) {
-    writeDailyArchiveState({ lastProcessedDate: todayKey });
+    await writeDailyArchiveState({ lastProcessedDate: todayKey });
     return { archivedCount: 0, initialized: true, date: todayKey };
   }
 
@@ -280,12 +336,12 @@ function maybeArchiveAndResetDailyOrders() {
     return { archivedCount: 0, skipped: true, date: todayKey };
   }
 
-  const archived = archiveOrdersForDate(lastProcessedDate);
-  writeDailyArchiveState({ lastProcessedDate: todayKey });
+  const archived = await archiveOrdersForDate(lastProcessedDate);
+  await writeDailyArchiveState({ lastProcessedDate: todayKey });
   return { ...archived, date: todayKey, archivedDate: lastProcessedDate };
 }
 
-function initDatabase() {
+async function initDatabase() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS usuarios (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -300,11 +356,11 @@ function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS pedidos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      clienteToken TEXT NOT NULL DEFAULT '',
+      cliente_token TEXT NOT NULL DEFAULT '',
       cliente TEXT NOT NULL,
       telefono TEXT,
       direccion TEXT,
-      tipoEntrega TEXT NOT NULL,
+      tipo_entrega TEXT NOT NULL,
       productos TEXT NOT NULL,
       subtotal REAL NOT NULL DEFAULT 0,
       envio REAL NOT NULL DEFAULT 0,
@@ -316,11 +372,11 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS pedidos_archivados (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fecha TEXT NOT NULL,
-      clienteToken TEXT NOT NULL DEFAULT '',
+      cliente_token TEXT NOT NULL DEFAULT '',
       cliente TEXT NOT NULL,
       telefono TEXT,
       direccion TEXT,
-      tipoEntrega TEXT NOT NULL,
+      tipo_entrega TEXT NOT NULL,
       productos TEXT NOT NULL,
       subtotal REAL NOT NULL DEFAULT 0,
       envio REAL NOT NULL DEFAULT 0,
@@ -363,12 +419,156 @@ function initDatabase() {
   `);
 
   const pedidoColumns = db.prepare('PRAGMA table_info(pedidos)').all();
-  const hasClienteToken = pedidoColumns.some(column => column.name === 'clienteToken');
-  if (!hasClienteToken) {
-    db.exec("ALTER TABLE pedidos ADD COLUMN clienteToken TEXT NOT NULL DEFAULT '';");
+  const hasClienteTokenSnake = pedidoColumns.some(column => column.name === 'cliente_token');
+  const hasClienteTokenCamel = pedidoColumns.some(column => column.name === 'clienteToken');
+  const hasTipoEntregaSnake = pedidoColumns.some(column => column.name === 'tipo_entrega');
+  const hasTipoEntregaCamel = pedidoColumns.some(column => column.name === 'tipoEntrega');
+
+  if (!hasClienteTokenSnake) {
+    db.exec("ALTER TABLE pedidos ADD COLUMN cliente_token TEXT NOT NULL DEFAULT '';");
+    if (hasClienteTokenCamel) {
+      db.exec("UPDATE pedidos SET cliente_token = clienteToken WHERE clienteToken IS NOT NULL AND clienteToken != '';");
+    }
   }
 
-  db.exec('CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_token ON pedidos (clienteToken);');
+  if (!hasTipoEntregaSnake) {
+    db.exec("ALTER TABLE pedidos ADD COLUMN tipo_entrega TEXT NOT NULL DEFAULT 'Pendiente';");
+    if (hasTipoEntregaCamel) {
+      db.exec("UPDATE pedidos SET tipo_entrega = tipoEntrega WHERE tipoEntrega IS NOT NULL AND tipoEntrega != '';");
+    }
+  }
+
+  if (hasClienteTokenCamel && hasTipoEntregaCamel) {
+    db.exec('DROP TABLE IF EXISTS pedidos_new;');
+    db.exec(`
+      CREATE TABLE pedidos_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_token TEXT NOT NULL DEFAULT '',
+        cliente TEXT NOT NULL,
+        telefono TEXT,
+        direccion TEXT,
+        tipo_entrega TEXT NOT NULL DEFAULT 'Pendiente',
+        productos TEXT NOT NULL,
+        subtotal REAL NOT NULL DEFAULT 0,
+        envio REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        estado TEXT NOT NULL DEFAULT 'Pendiente',
+        fecha TEXT NOT NULL
+      );
+    `);
+
+    db.exec(`
+      INSERT INTO pedidos_new (
+        cliente_token,
+        cliente,
+        telefono,
+        direccion,
+        tipo_entrega,
+        productos,
+        subtotal,
+        envio,
+        total,
+        estado,
+        fecha
+      )
+      SELECT
+        COALESCE(cliente_token, clienteToken, '') AS cliente_token,
+        cliente,
+        telefono,
+        direccion,
+        COALESCE(tipo_entrega, tipoEntrega, 'Pendiente') AS tipo_entrega,
+        productos,
+        subtotal,
+        envio,
+        total,
+        estado,
+        fecha
+      FROM pedidos;
+    `);
+
+    db.exec('DROP TABLE pedidos;');
+    db.exec('ALTER TABLE pedidos_new RENAME TO pedidos;');
+  }
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_token ON pedidos (cliente_token);');
+
+  const archivedColumns = db.prepare('PRAGMA table_info(pedidos_archivados)').all();
+  const hasArchivedClienteTokenSnake = archivedColumns.some(column => column.name === 'cliente_token');
+  const hasArchivedClienteTokenCamel = archivedColumns.some(column => column.name === 'clienteToken');
+  const hasArchivedTipoEntregaSnake = archivedColumns.some(column => column.name === 'tipo_entrega');
+  const hasArchivedTipoEntregaCamel = archivedColumns.some(column => column.name === 'tipoEntrega');
+
+  if (!hasArchivedClienteTokenSnake) {
+    db.exec("ALTER TABLE pedidos_archivados ADD COLUMN cliente_token TEXT NOT NULL DEFAULT '';");
+    if (hasArchivedClienteTokenCamel) {
+      db.exec("UPDATE pedidos_archivados SET cliente_token = clienteToken WHERE clienteToken IS NOT NULL AND clienteToken != '';");
+    }
+  }
+
+  if (!hasArchivedTipoEntregaSnake) {
+    db.exec("ALTER TABLE pedidos_archivados ADD COLUMN tipo_entrega TEXT NOT NULL DEFAULT 'Pendiente';");
+    if (hasArchivedTipoEntregaCamel) {
+      db.exec("UPDATE pedidos_archivados SET tipo_entrega = tipoEntrega WHERE tipoEntrega IS NOT NULL AND tipoEntrega != '';");
+    }
+  }
+
+  if (hasArchivedClienteTokenCamel && hasArchivedTipoEntregaCamel) {
+    db.exec('DROP TABLE IF EXISTS pedidos_archivados_new;');
+    db.exec(`
+      CREATE TABLE pedidos_archivados_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL,
+        cliente_token TEXT NOT NULL DEFAULT '',
+        cliente TEXT NOT NULL,
+        telefono TEXT,
+        direccion TEXT,
+        tipo_entrega TEXT NOT NULL DEFAULT 'Pendiente',
+        productos TEXT NOT NULL,
+        subtotal REAL NOT NULL DEFAULT 0,
+        envio REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        estado TEXT NOT NULL DEFAULT 'Pendiente',
+        creado_en TEXT NOT NULL,
+        origen_pedido_id INTEGER
+      );
+    `);
+
+    db.exec(`
+      INSERT INTO pedidos_archivados_new (
+        fecha,
+        cliente_token,
+        cliente,
+        telefono,
+        direccion,
+        tipo_entrega,
+        productos,
+        subtotal,
+        envio,
+        total,
+        estado,
+        creado_en,
+        origen_pedido_id
+      )
+      SELECT
+        fecha,
+        COALESCE(cliente_token, clienteToken, '') AS cliente_token,
+        cliente,
+        telefono,
+        direccion,
+        COALESCE(tipo_entrega, tipoEntrega, 'Pendiente') AS tipo_entrega,
+        productos,
+        subtotal,
+        envio,
+        total,
+        estado,
+        creado_en,
+        origen_pedido_id
+      FROM pedidos_archivados;
+    `);
+
+    db.exec('DROP TABLE pedidos_archivados;');
+    db.exec('ALTER TABLE pedidos_archivados_new RENAME TO pedidos_archivados;');
+  }
 
   const adminUser = 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD || process.env.ADMIN_PASS || '123456';
@@ -383,17 +583,18 @@ function initDatabase() {
     console.log('Contraseña de usuario admin actualizada.');
   }
 
-  seedGlobalConfigIfMissing();
+  await seedGlobalConfigIfMissing();
 }
 
 if (require.main === module) {
-  try {
-    initDatabase();
-    console.log('Base de datos inicializada correctamente.');
-  } catch (error) {
-    console.error('Error inicializando base de datos:', error);
-    process.exit(1);
-  }
+  initDatabase()
+    .then(() => {
+      console.log('Base de datos inicializada correctamente.');
+    })
+    .catch((error) => {
+      console.error('Error inicializando base de datos:', error);
+      process.exit(1);
+    });
 }
 
 module.exports = initDatabase;

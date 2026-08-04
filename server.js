@@ -32,23 +32,24 @@ app.use(express.urlencoded({ extended: true }));
 const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-initDatabase()
-  .then(() => {
-    maybeArchiveAndResetDailyOrders().catch(error => {
-      console.error('Error archivando pedidos inicial:', error);
-    });
+try {
+  initDatabase();
 
-    setInterval(() => {
-      maybeArchiveAndResetDailyOrders().catch(error => {
-        console.error('Error archivando pedidos:', error);
-      });
-    }, 60 * 1000);
-  })
-  .catch(error => {
-    console.error('Error inicializando la base de datos:', error);
-    process.exit(1);
-  });
+  console.log('Base de datos inicializada correctamente');
 
+  maybeArchiveAndResetDailyOrders();
+
+  setInterval(() => {
+    try {
+      maybeArchiveAndResetDailyOrders();
+    } catch (error) {
+      console.error('Error archivando pedidos:', error);
+    }
+  }, 60 * 1000);
+} catch (error) {
+  console.error('Error inicializando la base de datos:', error);
+  process.exit(1);
+}
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 

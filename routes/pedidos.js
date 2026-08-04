@@ -467,7 +467,9 @@ async function archiveOrdersForDate(dateKey, tzOffsetMinutes, reason = 'archived
             NOW(),
             $12
           )
-          ON CONFLICT (origen_pedido_id) DO NOTHING
+          ON CONFLICT (origen_pedido_id)
+WHERE origen_pedido_id IS NOT NULL
+DO NOTHING
         `;
 
     const sqliteInsertQuery = `
