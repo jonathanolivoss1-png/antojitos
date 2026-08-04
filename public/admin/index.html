@@ -219,6 +219,51 @@
       min-height: 1.2rem;
     }
 
+    /* ADMIN_CATALOG_COLLAPSIBLE_V1 */
+    .catalog-panel-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+    }
+
+    .catalog-panel-toggle {
+      min-width: 165px;
+    }
+
+    .catalog-panel-toggle .toggle-arrow {
+      display: inline-block;
+      margin-left: 0.45rem;
+      transition: transform 0.2s ease;
+    }
+
+    .catalog-panel-toggle[aria-expanded="true"] .toggle-arrow {
+      transform: rotate(180deg);
+    }
+
+    .catalog-admin-content[hidden] {
+      display: none !important;
+    }
+
+    .catalog-admin-content {
+      display: grid;
+      gap: 1rem;
+      animation: adminCatalogOpen 0.22s ease;
+    }
+
+    @keyframes adminCatalogOpen {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     .list {
       display: grid;
       gap: 0.9rem;
@@ -679,31 +724,89 @@
       </div>
     </section>
 
-    <section class="panel">
+        <!-- ADMIN_CATALOG_COLLAPSIBLE_V1 -->
+    <section class="panel" id="adminPromotionsPanel">
       <div class="product-top">
         <div>
           <h2>Promociones</h2>
           <p class="panel-copy">Activa ofertas, cambia textos y agrega nuevas promociones visibles en el sitio.</p>
         </div>
-        <button class="btn" id="addPromoBtn" type="button">Nueva promoción</button>
+
+        <div class="catalog-panel-actions">
+          <button
+            class="ghost-btn catalog-panel-toggle"
+            id="togglePromosPanelBtn"
+            type="button"
+            aria-expanded="false"
+            aria-controls="promosPanelContent"
+            data-open-label="Ocultar promociones"
+            data-closed-label="Mostrar promociones"
+          >
+            <span data-role="toggle-label">Mostrar promociones</span>
+            <span class="toggle-arrow" aria-hidden="true">▼</span>
+          </button>
+
+          <button class="btn" id="addPromoBtn" type="button">
+            Nueva promoción
+          </button>
+        </div>
       </div>
-      <div class="list" id="promoList"></div>
-      <div class="footer-actions">
-        <button class="save-btn" id="savePromosBtn" type="button">Guardar promociones</button>
+
+      <div
+        class="catalog-admin-content"
+        id="promosPanelContent"
+        hidden
+      >
+        <div class="list" id="promoList"></div>
+
+        <div class="footer-actions">
+          <button class="save-btn" id="savePromosBtn" type="button">
+            Guardar promociones
+          </button>
+        </div>
       </div>
     </section>
 
-    <section class="panel">
+        <!-- ADMIN_CATALOG_COLLAPSIBLE_V1 -->
+    <section class="panel" id="adminProductsPanel">
       <div class="product-top">
         <div>
           <h2>Productos</h2>
           <p class="panel-copy">Edita nombre, descripción, precio, imagen, activación y disponibilidad. Cada producto mantiene sus opciones y estado de inventario.</p>
         </div>
-        <button class="btn" id="addProductBtn" type="button">Nuevo producto</button>
+
+        <div class="catalog-panel-actions">
+          <button
+            class="ghost-btn catalog-panel-toggle"
+            id="toggleProductsPanelBtn"
+            type="button"
+            aria-expanded="false"
+            aria-controls="productsPanelContent"
+            data-open-label="Ocultar productos"
+            data-closed-label="Mostrar productos"
+          >
+            <span data-role="toggle-label">Mostrar productos</span>
+            <span class="toggle-arrow" aria-hidden="true">▼</span>
+          </button>
+
+          <button class="btn" id="addProductBtn" type="button">
+            Nuevo producto
+          </button>
+        </div>
       </div>
-      <div class="list" id="productList"></div>
-      <div class="footer-actions">
-        <button class="save-btn" id="saveProductsBtn" type="button">Guardar productos</button>
+
+      <div
+        class="catalog-admin-content"
+        id="productsPanelContent"
+        hidden
+      >
+        <div class="list" id="productList"></div>
+
+        <div class="footer-actions">
+          <button class="save-btn" id="saveProductsBtn" type="button">
+            Guardar productos
+          </button>
+        </div>
       </div>
     </section>
 

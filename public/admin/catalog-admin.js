@@ -12,9 +12,110 @@
   const addProductBtn = document.getElementById('addProductBtn');
   const saveProductsBtn = document.getElementById('saveProductsBtn');
 
+  const togglePromosPanelBtn =
+    document.getElementById('togglePromosPanelBtn');
+
+  const promosPanelContent =
+    document.getElementById('promosPanelContent');
+
+  const toggleProductsPanelBtn =
+    document.getElementById('toggleProductsPanelBtn');
+
+  const productsPanelContent =
+    document.getElementById('productsPanelContent');
+
   let promotions = [];
   let products = [];
   let loadedForCurrentSession = false;
+
+  // === ADMIN_CATALOG_COLLAPSIBLE_V1 ===
+  function setCatalogPanelState(
+    toggle,
+    content,
+    isOpen
+  ) {
+    if (!toggle || !content) return;
+
+    const open = Boolean(isOpen);
+    const label = toggle.querySelector(
+      '[data-role="toggle-label"]'
+    );
+
+    toggle.setAttribute(
+      'aria-expanded',
+      String(open)
+    );
+
+    content.hidden = !open;
+
+    if (label) {
+      label.textContent = open
+        ? toggle.dataset.openLabel
+        : toggle.dataset.closedLabel;
+    }
+  }
+
+  function openPromotionsPanel() {
+    setCatalogPanelState(
+      togglePromosPanelBtn,
+      promosPanelContent,
+      true
+    );
+  }
+
+  function openProductsPanel() {
+    setCatalogPanelState(
+      toggleProductsPanelBtn,
+      productsPanelContent,
+      true
+    );
+  }
+
+  function initCatalogPanels() {
+    setCatalogPanelState(
+      togglePromosPanelBtn,
+      promosPanelContent,
+      false
+    );
+
+    setCatalogPanelState(
+      toggleProductsPanelBtn,
+      productsPanelContent,
+      false
+    );
+
+    togglePromosPanelBtn?.addEventListener(
+      'click',
+      () => {
+        const isOpen =
+          togglePromosPanelBtn.getAttribute(
+            'aria-expanded'
+          ) === 'true';
+
+        setCatalogPanelState(
+          togglePromosPanelBtn,
+          promosPanelContent,
+          !isOpen
+        );
+      }
+    );
+
+    toggleProductsPanelBtn?.addEventListener(
+      'click',
+      () => {
+        const isOpen =
+          toggleProductsPanelBtn.getAttribute(
+            'aria-expanded'
+          ) === 'true';
+
+        setCatalogPanelState(
+          toggleProductsPanelBtn,
+          productsPanelContent,
+          !isOpen
+        );
+      }
+    );
+  }
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -712,6 +813,7 @@
 
   function bindCatalogEvents() {
     addPromoBtn?.addEventListener('click', () => {
+      openPromotionsPanel();
       promotions = readPromotionsFromDom().map(normalizePromo);
       promotions.push(
         normalizePromo({
@@ -725,6 +827,7 @@
     });
 
     addProductBtn?.addEventListener('click', () => {
+      openProductsPanel();
       products = readProductsFromDom().map(normalizeProduct);
       products.push(normalizeProduct());
       renderProducts();
@@ -761,6 +864,7 @@
     tryLoad();
   }
 
+  initCatalogPanels();
   bindCatalogEvents();
   watchAuthentication();
 })();

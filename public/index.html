@@ -1273,6 +1273,76 @@
       gap: 0.8rem;
     }
 
+    /* PUBLIC_PROMOTION_CART_V1 */
+    .promo-order-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      padding: 0.75rem;
+      border-radius: 14px;
+      background: rgba(46,125,50,0.07);
+      border: 1px solid rgba(46,125,50,0.12);
+    }
+
+    .promo-order-info {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .promo-order-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+
+    .promo-order-actions .qty-btn {
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 999px;
+      background: var(--crema);
+      color: var(--cafe);
+      font-size: 1rem;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .promo-order-actions .qty-number {
+      min-width: 26px;
+      text-align: center;
+      font-weight: 900;
+      color: var(--cafe);
+    }
+
+    .promo-no-price {
+      padding: 0.65rem 0.75rem;
+      border-radius: 12px;
+      background: rgba(249,168,37,0.12);
+      color: var(--naranja);
+      font-size: 0.86rem;
+      font-weight: 800;
+    }
+
+    @media (max-width: 620px) {
+      .promo-order-row {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .promo-order-actions {
+        justify-content: flex-start;
+      }
+
+      .promo-order-actions .btn-add-cart {
+        margin-left: auto;
+      }
+    }
+
     .promo-strip {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -2542,9 +2612,113 @@
       }
     }
 
+    // === PUBLIC_PROMOTION_CART_V1 ===
+    function escapePublicText(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function getPromotionById(promoId) {
+      return (appState.promotions || []).find(
+        promo =>
+          String(promo.id) ===
+          String(promoId)
+      );
+    }
+
+    function getPromotionPriceById(
+      promotion,
+      priceId
+    ) {
+      return (promotion?.prices || []).find(
+        price =>
+          String(price.id) ===
+          String(priceId)
+      );
+    }
+
+    function getPromoProductId(promoId) {
+      return `promo::${promoId}`;
+    }
+
+    function getPromoIdFromProductId(productId) {
+      const value = String(productId || '');
+
+      return value.startsWith('promo::')
+        ? value.slice('promo::'.length)
+        : '';
+    }
+
+    function getPromoItemFromTrigger(trigger) {
+      const promotion = getPromotionById(
+        trigger.dataset.promoId
+      );
+
+      if (!promotion || !promotion.active) {
+        showToast(
+          'Esta promoción ya no está disponible',
+          'warning'
+        );
+        return null;
+      }
+
+      const priceItem = getPromotionPriceById(
+        promotion,
+        trigger.dataset.priceId
+      );
+
+      if (!priceItem) {
+        showToast(
+          'No se encontró el precio de la promoción',
+          'warning'
+        );
+        return null;
+      }
+
+      const promoProductId =
+        getPromoProductId(promotion.id);
+
+      return {
+        key:
+          `${promoProductId}::${priceItem.id}`,
+
+        name:
+          `Promoción: ${promotion.title} - ${priceItem.label}`,
+
+        price:
+          Number(priceItem.price || 0),
+
+        qty:
+          getQuantity(
+            promoProductId,
+            priceItem.id
+          ),
+
+        image:
+          '',
+
+        productId:
+          promoProductId,
+
+        optionId:
+          String(priceItem.id),
+
+        choice:
+          ''
+      };
+    }
+
     function renderPromotions() {
       if (!promoGrid) return;
-      const activePromotions = (appState.promotions || []).filter(promo => promo.active);
+
+      const activePromotions =
+        (appState.promotions || []).filter(
+          promo => promo.active
+        );
 
       if (!activePromotions.length) {
         promoGrid.innerHTML = `
@@ -2555,27 +2729,136 @@
         return;
       }
 
-      promoGrid.innerHTML = activePromotions.map(promo => {
-        const prices = Array.isArray(promo.prices) ? promo.prices : [];
-        const pricesMarkup = prices.length
-          ? `
-              <div class="promo-prices-list">
-                ${prices.map(item => `
-                  <span class="promo-price-item">${item.label}: ${formatCurrency(item.price || 0)}</span>
-                `).join('')}
-              </div>
-            `
-          : '';
+      promoGrid.innerHTML =
+        activePromotions
+          .map((promo, promoIndex) => {
+            const promoId = String(
+              promo.id ||
+              `promo-${promoIndex + 1}`
+            );
 
-        return `
-        <article class="promo-card reveal">
-          <span class="promo-chip">${promo.chip || 'Promo'}</span>
-          <h3>${promo.title}</h3>
-          <p>${promo.text}</p>
-          ${pricesMarkup}
-        </article>
-        `;
-      }).join('');
+            const prices =
+              Array.isArray(promo.prices)
+                ? promo.prices
+                : [];
+
+            const pricesMarkup =
+              prices.length
+                ? `
+                    <div class="promo-prices-list">
+                      ${prices.map((item, index) => {
+                        const priceId = String(
+                          item?.id ||
+                          `${promoId}-price-${index + 1}`
+                        );
+
+                        const promoProductId =
+                          getPromoProductId(
+                            promoId
+                          );
+
+                        return `
+                          <div class="promo-order-row">
+                            <div class="promo-order-info">
+                              <span class="option-name">
+                                ${escapePublicText(
+                                  item?.label ||
+                                  'Promoción'
+                                )}
+                              </span>
+
+                              <span class="option-price">
+                                ${formatCurrency(
+                                  Number(
+                                    item?.price ||
+                                    0
+                                  )
+                                )}
+                              </span>
+                            </div>
+
+                            <div class="promo-order-actions">
+                              <button
+                                type="button"
+                                class="qty-btn"
+                                data-action="promo-qty-minus"
+                                data-promo-id="${escapePublicText(promoId)}"
+                                data-price-id="${escapePublicText(priceId)}"
+                                aria-label="Disminuir cantidad"
+                              >
+                                −
+                              </button>
+
+                              <span
+                                class="qty-number"
+                                data-role="qty-display"
+                              >
+                                ${getQuantity(
+                                  promoProductId,
+                                  priceId
+                                )}
+                              </span>
+
+                              <button
+                                type="button"
+                                class="qty-btn"
+                                data-action="promo-qty-plus"
+                                data-promo-id="${escapePublicText(promoId)}"
+                                data-price-id="${escapePublicText(priceId)}"
+                                aria-label="Aumentar cantidad"
+                              >
+                                +
+                              </button>
+
+                              <button
+                                type="button"
+                                class="btn-add-cart"
+                                data-action="add-promo"
+                                data-promo-id="${escapePublicText(promoId)}"
+                                data-price-id="${escapePublicText(priceId)}"
+                              >
+                                Agregar
+                              </button>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  `
+                : `
+                    <div class="promo-no-price">
+                      Consulta disponibilidad de esta promoción.
+                    </div>
+                  `;
+
+            return `
+              <article class="promo-card reveal">
+                <span class="promo-chip">
+                  ${escapePublicText(
+                    promo.chip ||
+                    'Promo'
+                  )}
+                </span>
+
+                <h3>
+                  ${escapePublicText(
+                    promo.title ||
+                    'Promoción'
+                  )}
+                </h3>
+
+                <p>
+                  ${escapePublicText(
+                    promo.text ||
+                    ''
+                  )}
+                </p>
+
+                ${pricesMarkup}
+              </article>
+            `;
+          })
+          .join('');
     }
 
     function buildMenuCard(product) {
@@ -2731,7 +3014,7 @@
       }
       renderCart();
       pulseCart();
-      showToast('Producto agregado al carrito');
+      showToast('Artículo agregado al carrito');
     }
 
     function removeCartItem(index) {
@@ -3077,38 +3360,143 @@
     }
 
     function reorderOrder(orderId) {
-      const order = orderHistory.find(entry => String(entry.id) === String(orderId));
+      const order = orderHistory.find(
+        entry =>
+          String(entry.id) ===
+          String(orderId)
+      );
+
       if (!order) return;
 
       let added = 0;
       let skipped = 0;
 
       order.items.forEach(item => {
-        const product = getProductById(item.productId);
-        const option = product ? getOptionById(product, item.optionId) : null;
+        const promoId =
+          getPromoIdFromProductId(
+            item.productId
+          );
 
-        if (!product || !product.active || !product.available || !option) {
+        if (promoId) {
+          const promotion =
+            getPromotionById(promoId);
+
+          const priceItem =
+            getPromotionPriceById(
+              promotion,
+              item.optionId
+            );
+
+          if (
+            !promotion ||
+            !promotion.active ||
+            !priceItem
+          ) {
+            skipped += 1;
+            return;
+          }
+
+          addToCart({
+            key:
+              `${getPromoProductId(
+                promotion.id
+              )}::${priceItem.id}`,
+
+            name:
+              `Promoción: ${promotion.title} - ${priceItem.label}`,
+
+            price:
+              Number(
+                priceItem.price ||
+                0
+              ),
+
+            qty:
+              Number(item.qty || 1),
+
+            image:
+              '',
+
+            productId:
+              getPromoProductId(
+                promotion.id
+              ),
+
+            optionId:
+              String(priceItem.id),
+
+            choice:
+              ''
+          });
+
+          added += 1;
+          return;
+        }
+
+        const product =
+          getProductById(
+            item.productId
+          );
+
+        const option =
+          product
+            ? getOptionById(
+                product,
+                item.optionId
+              )
+            : null;
+
+        if (
+          !product ||
+          !product.active ||
+          !product.available ||
+          !option
+        ) {
           skipped += 1;
           return;
         }
 
         addToCart({
-          key: `${product.id}::${option.id}::${item.choice || 'base'}`,
-          name: item.name,
-          price: option.price,
-          qty: item.qty,
-          image: product.image,
-          productId: product.id,
-          optionId: option.id,
-          choice: item.choice || ''
+          key:
+            `${product.id}::${option.id}::${item.choice || 'base'}`,
+
+          name:
+            item.name,
+
+          price:
+            option.price,
+
+          qty:
+            item.qty,
+
+          image:
+            product.image,
+
+          productId:
+            product.id,
+
+          optionId:
+            option.id,
+
+          choice:
+            item.choice ||
+            ''
         });
+
         added += 1;
       });
 
       if (added) {
-        showToast(skipped ? 'Pedido agregado parcialmente al carrito' : 'Pedido agregado nuevamente al carrito');
+        showToast(
+          skipped
+            ? 'Pedido agregado parcialmente al carrito'
+            : 'Pedido agregado nuevamente al carrito'
+        );
       } else {
-        showToast('Ese pedido ya no tiene productos disponibles', 'warning');
+        showToast(
+          'Ese pedido ya no tiene artículos disponibles',
+          'warning'
+        );
       }
     }
 
@@ -3139,6 +3527,97 @@
         optionId: option.id,
         choice: choiceValue
       };
+    }
+
+    function initPromotionEvents() {
+      if (!promoGrid) return;
+
+      promoGrid.addEventListener(
+        'click',
+        event => {
+          const trigger =
+            event.target.closest(
+              'button[data-action]'
+            );
+
+          if (!trigger) return;
+
+          const action =
+            trigger.dataset.action;
+
+          if (
+            ![
+              'promo-qty-plus',
+              'promo-qty-minus',
+              'add-promo'
+            ].includes(action)
+          ) {
+            return;
+          }
+
+          const promoProductId =
+            getPromoProductId(
+              trigger.dataset.promoId
+            );
+
+          const priceId =
+            trigger.dataset.priceId;
+
+          const row =
+            trigger.closest(
+              '.promo-order-row'
+            );
+
+          const display =
+            row?.querySelector(
+              '[data-role="qty-display"]'
+            );
+
+          if (
+            action ===
+            'promo-qty-plus'
+          ) {
+            updateQuantity(
+              promoProductId,
+              priceId,
+              1,
+              display
+            );
+            return;
+          }
+
+          if (
+            action ===
+            'promo-qty-minus'
+          ) {
+            updateQuantity(
+              promoProductId,
+              priceId,
+              -1,
+              display
+            );
+            return;
+          }
+
+          const item =
+            getPromoItemFromTrigger(
+              trigger
+            );
+
+          if (!item) return;
+
+          addToCart(item);
+
+          resetQuantity(
+            promoProductId,
+            priceId
+          );
+
+          if (display) {
+            display.textContent = '1';
+          }
+        }
+      );
     }
 
     function initMenuEvents() {
@@ -3406,6 +3885,7 @@
     syncOrderHistoryFromApi();
     startOrderHistoryRealtimeSync();
     renderPendingOrderBanner();
+    initPromotionEvents();
     initMenuEvents();
     initCategoryFilters();
     initReveal();
