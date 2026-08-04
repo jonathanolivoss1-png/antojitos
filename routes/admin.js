@@ -339,25 +339,98 @@ async function writeSoldProductsSeparated(names) {
 }
 
 function normalizeCalculatorDraft(value) {
-  const source = value && typeof value === 'object' ? value : {};
-  const products = Array.isArray(source.products)
-    ? source.products
-        .map((item, index) => {
-          const id = sanitizeText(item?.id || `draft-item-${index + 1}`, 100);
-          const name = sanitizeText(item?.name || '', 120);
-          const qty = Math.max(0, sanitizeNumber(item?.qty));
-          const price = Math.max(0, sanitizeNumber(item?.price));
-          if (!id) return null;
-          return { id, name, qty, price };
-        })
-        .filter(Boolean)
-    : [];
+  const source =
+    value &&
+    typeof value === 'object'
+      ? value
+      : {};
+
+  const products =
+    Array.isArray(source.products)
+      ? source.products
+          .map((item, index) => {
+            const id = sanitizeText(
+              item?.id ||
+              `draft-item-${index + 1}`,
+              100
+            );
+
+            const name = sanitizeText(
+              item?.name || '',
+              120
+            );
+
+            const qty = Math.max(
+              0,
+              sanitizeNumber(
+                item?.qty
+              )
+            );
+
+            const price = Math.max(
+              0,
+              sanitizeNumber(
+                item?.price
+              )
+            );
+
+            if (!id) return null;
+
+            return {
+              id,
+              name,
+              qty,
+              price
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+  const todayKey =
+    getMexicoCityDateKey();
+
+  const salesStartDate =
+    isValidDateKey(
+      source.salesStartDate
+    )
+      ? source.salesStartDate
+      : todayKey;
+
+  const salesEndDate =
+    isValidDateKey(
+      source.salesEndDate
+    )
+      ? source.salesEndDate
+      : salesStartDate;
 
   return {
     products,
-    manualIncomeValue: Math.max(0, sanitizeNumber(source.manualIncomeValue || 0)),
-    useDashboardRevenue: Boolean(source.useDashboardRevenue),
-    updatedAt: Math.max(0, sanitizeNumber(source.updatedAt || 0))
+
+    manualIncomeValue:
+      Math.max(
+        0,
+        sanitizeNumber(
+          source.manualIncomeValue ||
+          0
+        )
+      ),
+
+    useDashboardRevenue:
+      Boolean(
+        source.useDashboardRevenue
+      ),
+
+    salesStartDate,
+    salesEndDate,
+
+    updatedAt:
+      Math.max(
+        0,
+        sanitizeNumber(
+          source.updatedAt ||
+          0
+        )
+      )
   };
 }
 
@@ -786,6 +859,189 @@ router.get('/products', requireAuth, async (req, res) => {
     return res.json({ ok: true, products });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'No se pudieron cargar productos' });
+  }
+});
+
+// === CALCULATOR_SALES_RANGE_BACKEND_V1 ===
+router.get('/calculator-sales-range', requireAuth, async (req, res) => {
+  try {
+    await maybeArchiveAndResetDailyOrders();
+
+    const requestedStart = sanitizeText(
+      req.query?.startDate || '',
+      10
+    );
+
+    const requestedEnd = sanitizeText(
+      req.query?.endDate || '',
+      10
+    );
+
+    const todayKey = getMexicoCityDateKey();
+
+    const startDate =
+      requestedStart || todayKey;
+
+    const endDate =
+      requestedEnd || startDate;
+
+    if (
+      !isValidDateKey(startDate) ||
+      !isValidDateKey(endDate)
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          'Fechas invalidas. Usa formato YYYY-MM-DD'
+      });
+    }
+
+    if (startDate > endDate) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          'La fecha inicial no puede ser posterior a la fecha final'
+      });
+    }
+
+    const startRange =
+      buildUtcRangeFromDateKey(
+        startDate,
+        MEXICO_CITY_TZ_OFFSET_MINUTES
+      );
+
+    const endRange =
+      buildUtcRangeFromDateKey(
+        endDate,
+        MEXICO_CITY_TZ_OFFSET_MINUTES
+      );
+
+    const [
+      activeSummary,
+      archivedSummary
+    ] = await Promise.all([
+      querySingle(
+        `
+          SELECT
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN estado != 'Cancelado'
+                    THEN total
+                  ELSE 0
+                END
+              ),
+              0
+            ) AS total,
+
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN estado != 'Cancelado'
+                    THEN 1
+                  ELSE 0
+                END
+              ),
+              0
+            ) AS order_count
+
+          FROM pedidos
+          WHERE fecha >= ?
+            AND fecha < ?
+        `,
+        [
+          startRange.startIso,
+          endRange.endIso
+        ]
+      ),
+
+      querySingle(
+        `
+          SELECT
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN estado != 'Cancelado'
+                    THEN total
+                  ELSE 0
+                END
+              ),
+              0
+            ) AS total,
+
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN estado != 'Cancelado'
+                    THEN 1
+                  ELSE 0
+                END
+              ),
+              0
+            ) AS order_count
+
+          FROM pedidos_archivados
+          WHERE fecha >= ?
+            AND fecha <= ?
+        `,
+        [
+          startDate,
+          endDate
+        ]
+      )
+    ]);
+
+    const activeRevenue = roundMoney(
+      Number(activeSummary?.total || 0)
+    );
+
+    const archivedRevenue = roundMoney(
+      Number(archivedSummary?.total || 0)
+    );
+
+    const totalRevenue = roundMoney(
+      activeRevenue + archivedRevenue
+    );
+
+    const activeOrders = Number(
+      activeSummary?.order_count || 0
+    );
+
+    const archivedOrders = Number(
+      archivedSummary?.order_count || 0
+    );
+
+    return res.json({
+      ok: true,
+
+      period: {
+        startDate,
+        endDate,
+        timezone:
+          'America/Mexico_City'
+      },
+
+      summary: {
+        totalRevenue,
+        orderCount:
+          activeOrders + archivedOrders,
+        activeRevenue,
+        archivedRevenue,
+        activeOrders,
+        archivedOrders
+      }
+    });
+  } catch (error) {
+    console.error(
+      'Error calculando ventas para la calculadora:',
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message:
+        'No se pudieron calcular las ventas del periodo'
+    });
   }
 });
 

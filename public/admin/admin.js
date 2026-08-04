@@ -52,6 +52,10 @@
   const calculatorAddProductBtn = document.getElementById('calculatorAddProductBtn');
   const calculatorClearBtn = document.getElementById('calculatorClearBtn');
   const calculatorUseDashboardToggle = document.getElementById('calculatorUseDashboardToggle');
+  const calculatorSalesStartDateInput = document.getElementById('calculatorSalesStartDate');
+  const calculatorSalesEndDateInput = document.getElementById('calculatorSalesEndDate');
+  const calculatorLoadSalesRangeBtn = document.getElementById('calculatorLoadSalesRangeBtn');
+  const calculatorSalesRangeLabel = document.getElementById('calculatorSalesRangeLabel');
   const calculatorIncomeInput = document.getElementById('calculatorIncomeInput');
   const calculatorExpensesTotal = document.getElementById('calculatorExpensesTotal');
   const calculatorIncomeTotal = document.getElementById('calculatorIncomeTotal');
@@ -72,6 +76,9 @@
   let soldProductsFilter = null;
   let dashboardRevenue = 0;
   let manualIncomeValue = 0;
+  let calculatorSalesStartDate = '';
+  let calculatorSalesEndDate = '';
+  let calculatorSalesRangeLoaded = false;
   let calculatorDraftUpdatedAt = 0;
   let calculatorDraftSyncRetryNeeded = false;
   let allowEmptyDraftOverrideOnce = false;
@@ -169,6 +176,8 @@
         .filter(item => String(item.name || '').trim() || Number(item.price || 0) > 0),
       manualIncomeValue: Math.max(0, Number(manualIncomeValue || 0)),
       useDashboardRevenue: isUsingDashboardRevenue(),
+      salesStartDate: calculatorSalesStartDate,
+      salesEndDate: calculatorSalesEndDate,
       updatedAt: Math.max(0, Number(calculatorDraftUpdatedAt || 0))
     };
   }
@@ -188,6 +197,30 @@
     calculatorProducts = incomingProducts.length ? incomingProducts : [createCalculatorProduct()];
     manualIncomeValue = Math.max(0, Number(draft?.manualIncomeValue || 0));
     calculatorDraftUpdatedAt = Math.max(0, Number(draft?.updatedAt || 0));
+
+    const calculatorToday =
+      typeof getMexicoCityDateKey === 'function'
+        ? getMexicoCityDateKey()
+        : getTodayDateKey();
+
+    calculatorSalesStartDate =
+      isValidCalculatorDateKey(
+        draft?.salesStartDate
+      )
+        ? draft.salesStartDate
+        : calculatorToday;
+
+    calculatorSalesEndDate =
+      isValidCalculatorDateKey(
+        draft?.salesEndDate
+      )
+        ? draft.salesEndDate
+        : calculatorSalesStartDate;
+
+    calculatorSalesRangeLoaded =
+      false;
+
+    ensureCalculatorSalesRangeDefaults();
 
     if (calculatorUseDashboardToggle) {
       calculatorUseDashboardToggle.checked = Boolean(draft?.useDashboardRevenue ?? true);
@@ -566,12 +599,220 @@
     return Number.isFinite(value) ? value : 0;
   }
 
+  // === CALCULATOR_SALES_RANGE_FRONTEND_V1 ===
+  function isValidCalculatorDateKey(value) {
+    return (
+      typeof value === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(value)
+    );
+  }
+
+  function ensureCalculatorSalesRangeDefaults() {
+    const today =
+      typeof getMexicoCityDateKey === 'function'
+        ? getMexicoCityDateKey()
+        : getTodayDateKey();
+
+    if (
+      !isValidCalculatorDateKey(
+        calculatorSalesStartDate
+      )
+    ) {
+      calculatorSalesStartDate =
+        today;
+    }
+
+    if (
+      !isValidCalculatorDateKey(
+        calculatorSalesEndDate
+      )
+    ) {
+      calculatorSalesEndDate =
+        calculatorSalesStartDate;
+    }
+
+    if (calculatorSalesStartDateInput) {
+      calculatorSalesStartDateInput.value =
+        calculatorSalesStartDate;
+    }
+
+    if (calculatorSalesEndDateInput) {
+      calculatorSalesEndDateInput.value =
+        calculatorSalesEndDate;
+    }
+  }
+
+  function updateCalculatorSalesRangeLabel(summary) {
+    if (!calculatorSalesRangeLabel) {
+      return;
+    }
+
+    const startDate =
+      calculatorSalesStartDate;
+
+    const endDate =
+      calculatorSalesEndDate;
+
+    const totalRevenue =
+      Number(
+        summary?.totalRevenue ??
+        dashboardRevenue ??
+        0
+      );
+
+    const orderCount =
+      Number(
+        summary?.orderCount ||
+        0
+      );
+
+    const periodText =
+      startDate === endDate
+        ? `del ${formatDateKeyLabel(startDate)}`
+        : `del ${formatDateKeyLabel(startDate)} al ${formatDateKeyLabel(endDate)}`;
+
+    calculatorSalesRangeLabel.textContent =
+      `Ventas ${periodText}: ${formatCurrency(totalRevenue)} en ${orderCount} pedido${orderCount === 1 ? '' : 's'}.`;
+  }
+
+  async function loadCalculatorSalesRange(
+    options = {}
+  ) {
+    ensureCalculatorSalesRangeDefaults();
+
+    const startDate = String(
+      calculatorSalesStartDateInput?.value ||
+      calculatorSalesStartDate ||
+      ''
+    ).trim();
+
+    const endDate = String(
+      calculatorSalesEndDateInput?.value ||
+      calculatorSalesEndDate ||
+      ''
+    ).trim();
+
+    if (
+      !isValidCalculatorDateKey(startDate) ||
+      !isValidCalculatorDateKey(endDate)
+    ) {
+      if (!options.silent) {
+        showToast(
+          'Selecciona una fecha inicial y una fecha final',
+          true
+        );
+      }
+
+      return null;
+    }
+
+    if (startDate > endDate) {
+      if (!options.silent) {
+        showToast(
+          'La fecha inicial no puede ser posterior a la fecha final',
+          true
+        );
+      }
+
+      return null;
+    }
+
+    if (calculatorLoadSalesRangeBtn) {
+      calculatorLoadSalesRangeBtn.disabled =
+        true;
+    }
+
+    try {
+      const result = await api(
+        `/api/admin/calculator-sales-range?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
+      );
+
+      const summary =
+        result?.summary || {};
+
+      calculatorSalesStartDate =
+        startDate;
+
+      calculatorSalesEndDate =
+        endDate;
+
+      dashboardRevenue =
+        Math.max(
+          0,
+          Number(
+            summary.totalRevenue ||
+            0
+          )
+        );
+
+      calculatorSalesRangeLoaded =
+        true;
+
+      if (
+        calculatorUseDashboardToggle
+      ) {
+        calculatorUseDashboardToggle.checked =
+          true;
+      }
+
+      updateCalculatorSalesRangeLabel(
+        summary
+      );
+
+      saveCalculatorDraft();
+      renderCalculatorSummary();
+
+      if (!options.silent) {
+        showToast(
+          'Ventas del periodo cargadas en la calculadora'
+        );
+      }
+
+      return result;
+    } catch (error) {
+      calculatorSalesRangeLoaded =
+        false;
+
+      if (!options.silent) {
+        showToast(
+          error.message ||
+          'No se pudieron cargar las ventas del periodo',
+          true
+        );
+      }
+
+      return null;
+    } finally {
+      if (calculatorLoadSalesRangeBtn) {
+        calculatorLoadSalesRangeBtn.disabled =
+          false;
+      }
+    }
+  }
+
   function syncDashboardRevenueFromKpi() {
-    const kpiEl = document.getElementById('kpiVentasDia');
+    if (calculatorSalesRangeLoaded) {
+      return;
+    }
+
+    const kpiEl =
+      document.getElementById(
+        'kpiVentasDia'
+      );
+
     if (!kpiEl) return;
-    const parsed = parseMoneyFromText(kpiEl.textContent);
+
+    const parsed =
+      parseMoneyFromText(
+        kpiEl.textContent
+      );
+
     if (Number.isFinite(parsed)) {
-      dashboardRevenue = Math.max(0, parsed);
+      dashboardRevenue =
+        Math.max(
+          0,
+          parsed
+        );
     }
   }
 
@@ -1142,6 +1383,7 @@
         await loadSoldProductsData();
         await loadEditableSettings();
         await hydrateCalculatorDraftFromServer();
+        await loadCalculatorSalesRange({ silent: true });
         startAdminEventsStream();
         startRefresh();
       } else {
@@ -1448,6 +1690,47 @@
       });
     }
 
+    ensureCalculatorSalesRangeDefaults();
+
+    if (calculatorSalesStartDateInput) {
+      calculatorSalesStartDateInput.addEventListener(
+        'change',
+        () => {
+          calculatorSalesStartDate =
+            calculatorSalesStartDateInput.value;
+
+          calculatorSalesRangeLoaded =
+            false;
+
+          saveCalculatorDraft();
+        }
+      );
+    }
+
+    if (calculatorSalesEndDateInput) {
+      calculatorSalesEndDateInput.addEventListener(
+        'change',
+        () => {
+          calculatorSalesEndDate =
+            calculatorSalesEndDateInput.value;
+
+          calculatorSalesRangeLoaded =
+            false;
+
+          saveCalculatorDraft();
+        }
+      );
+    }
+
+    if (calculatorLoadSalesRangeBtn) {
+      calculatorLoadSalesRangeBtn.addEventListener(
+        'click',
+        () => {
+          void loadCalculatorSalesRange();
+        }
+      );
+    }
+
     if (calculatorAddProductBtn) {
       calculatorAddProductBtn.addEventListener('click', () => {
         calculatorProducts.push(createCalculatorProduct());
@@ -1467,7 +1750,7 @@
           calculatorIncomeInput.value = '0.00';
         }
         if (calculatorUseDashboardToggle.checked) {
-          syncDashboardRevenueFromKpi();
+          void loadCalculatorSalesRange();
         }
         saveCalculatorDraft();
         renderCalculatorSummary();

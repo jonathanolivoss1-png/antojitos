@@ -450,6 +450,24 @@
       border: 1px solid rgba(199,62,29,0.1);
     }
 
+    /* CALCULATOR_SALES_RANGE_UI_V1 */
+    .calculator-sales-range {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(150px, 1fr)) auto;
+      gap: 0.7rem;
+      align-items: end;
+    }
+
+    .calculator-sales-range .form-group {
+      min-width: 0;
+    }
+
+    .calculator-sales-range-note {
+      width: 100%;
+      margin-top: 0.1rem;
+    }
+
     .calculator-products {
       display: grid;
       gap: 0.75rem;
@@ -548,6 +566,10 @@
     }
 
     @media (max-width: 720px) {
+      .calculator-sales-range {
+        grid-template-columns: 1fr;
+      }
+
       .calculator-product-row {
         grid-template-columns: 1fr;
       }
@@ -813,17 +835,59 @@
 
       <div class="calculator-grid">
         <div>
+          <!-- CALCULATOR_SALES_RANGE_UI_V1 -->
           <div class="calculator-toolbar">
             <label class="calculator-toggle" for="calculatorUseDashboardToggle">
               <input id="calculatorUseDashboardToggle" type="checkbox" checked />
-              <span>Tomar ganancias del dashboard</span>
+              <span>Usar ventas del periodo seleccionado</span>
             </label>
+
+            <div class="calculator-sales-range">
+              <div class="form-group">
+                <label for="calculatorSalesStartDate">Fecha inicial</label>
+                <input
+                  id="calculatorSalesStartDate"
+                  type="date"
+                  aria-label="Fecha inicial para las ventas de la calculadora"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="calculatorSalesEndDate">Fecha final</label>
+                <input
+                  id="calculatorSalesEndDate"
+                  type="date"
+                  aria-label="Fecha final para las ventas de la calculadora"
+                />
+              </div>
+
+              <button
+                class="btn"
+                id="calculatorLoadSalesRangeBtn"
+                type="button"
+              >
+                Usar ventas del periodo
+              </button>
+            </div>
+
+            <p
+              class="meta-note calculator-sales-range-note"
+              id="calculatorSalesRangeLabel"
+            >
+              Selecciona una fecha inicial y una fecha final.
+            </p>
+
             <div class="form-group">
-              <label for="calculatorIncomeInput">Ganancias</label>
-              <input id="calculatorIncomeInput" type="number" step="0.01" min="0" value="0" />
+              <label for="calculatorIncomeInput">Ganancias manuales</label>
+              <input
+                id="calculatorIncomeInput"
+                type="number"
+                step="0.01"
+                min="0"
+                value="0"
+              />
             </div>
           </div>
-
           <div class="calculator-products" id="calculatorProducts"></div>
           <div class="footer-actions">
             <button class="ghost-btn" id="calculatorAddProductBtn" type="button">Agregar producto</button>
