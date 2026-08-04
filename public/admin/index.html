@@ -650,7 +650,169 @@
         width: 100%;
       }
     }
-  </style>
+
+    /* ADMIN_BUSINESS_TOOLS_V1 */
+    .order-filter-panel {
+      display: grid;
+      grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(150px, 1fr)) auto;
+      gap: 0.75rem;
+      align-items: end;
+      padding: 1rem;
+      border-radius: 18px;
+      background: #fff9f1;
+      border: 1px solid rgba(199,62,29,0.12);
+    }
+
+    .order-filter-panel .form-group {
+      min-width: 0;
+    }
+
+    .order-filter-panel input,
+    .order-filter-panel select,
+    .cash-closing-form input,
+    .cash-closing-form textarea {
+      width: 100%;
+    }
+
+    .order-filter-summary {
+      grid-column: 1 / -1;
+      color: #7c5e52;
+      font-size: 0.9rem;
+      font-weight: 800;
+    }
+
+    .cash-closing-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.8rem;
+    }
+
+    .cash-closing-card {
+      padding: 0.95rem;
+      border-radius: 18px;
+      background: #fff9f1;
+      border: 1px solid rgba(199,62,29,0.12);
+      display: grid;
+      gap: 0.25rem;
+    }
+
+    .cash-closing-card span {
+      color: #7c5e52;
+      font-size: 0.86rem;
+      font-weight: 800;
+    }
+
+    .cash-closing-card strong {
+      color: var(--rojo);
+      font-size: 1.15rem;
+    }
+
+    .cash-closing-card.positive strong {
+      color: var(--verde);
+    }
+
+    .cash-closing-card.warning strong {
+      color: var(--naranja);
+    }
+
+    .cash-closing-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+
+    .cash-closing-form .full {
+      grid-column: 1 / -1;
+    }
+
+    .backup-drop {
+      display: grid;
+      gap: 0.8rem;
+      padding: 1rem;
+      border-radius: 18px;
+      border: 1px dashed rgba(199,62,29,0.35);
+      background: #fff9f1;
+    }
+
+    .backup-file-name {
+      color: #7c5e52;
+      font-size: 0.9rem;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 980px) {
+      .order-filter-panel {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .cash-closing-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .order-filter-panel,
+      .cash-closing-form,
+      .cash-closing-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .order-filter-panel .ghost-btn {
+        width: 100%;
+      }
+    }
+  
+    /* ADMIN_TOOLS_BELOW_CALCULATOR_V1 */
+    .admin-tool-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      white-space: nowrap;
+    }
+
+    .admin-tool-toggle-icon {
+      font-size: 0.8rem;
+      transition: transform 0.2s ease;
+    }
+
+    .admin-tool-toggle[aria-expanded="true"] .admin-tool-toggle-icon {
+      transform: rotate(180deg);
+    }
+
+    .admin-tool-collapsible-content[hidden] {
+      display: none !important;
+    }
+
+    .admin-tool-collapsible-content {
+      display: grid;
+      gap: 1rem;
+      animation: adminToolOpen 0.22s ease;
+    }
+
+    @keyframes adminToolOpen {
+      from {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .admin-tool-toggle {
+        width: 100%;
+      }
+    }
+
+</style>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="theme-color" content="#C73E1D" />
 </head>
 <body>
   <div class="login-wrap" id="loginWrap">
@@ -835,6 +997,60 @@
         <article class="kpi-card"><span>Producto más vendido</span><strong id="kpiProductoTop">Sin datos</strong></article>
       </div>
 
+      
+      <!-- ADMIN_BUSINESS_TOOLS_V1: buscador y filtros -->
+      <div class="order-filter-panel" id="orderFilterPanel">
+        <div class="form-group">
+          <label for="orderSearchInput">Buscar pedido</label>
+          <input
+            id="orderSearchInput"
+            type="search"
+            placeholder="Cliente, teléfono, dirección, número o producto"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="orderStatusFilter">Estado</label>
+          <select id="orderStatusFilter">
+            <option value="">Todos</option>
+            <option value="Pendiente">Pendiente</option>
+            <option value="Confirmado">Confirmado</option>
+            <option value="Preparando">Preparando</option>
+            <option value="En camino">En camino</option>
+            <option value="Entregado">Entregado</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="orderDeliveryFilter">Entrega</label>
+          <select id="orderDeliveryFilter">
+            <option value="">Todas</option>
+            <option value="delivery">Envío a domicilio</option>
+            <option value="pickup">Recolección</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="orderSortSelect">Ordenar</label>
+          <select id="orderSortSelect">
+            <option value="recent">Más recientes</option>
+            <option value="oldest">Más antiguos</option>
+            <option value="total-desc">Mayor importe</option>
+            <option value="total-asc">Menor importe</option>
+            <option value="client">Cliente A–Z</option>
+          </select>
+        </div>
+
+        <button class="ghost-btn" id="orderFiltersClearBtn" type="button">
+          Limpiar filtros
+        </button>
+
+        <p class="order-filter-summary" id="orderFilterCount">
+          Mostrando todos los pedidos del día.
+        </p>
+      </div>
       <div class="admin-orders-table-wrap">
         <table class="admin-orders-table">
           <thead>
@@ -926,7 +1142,13 @@
       </div>
     </section>
 
-    <section class="panel" id="calculatorSection">
+    
+    <!-- ADMIN_BUSINESS_TOOLS_V1: corte de caja -->
+    
+
+    <!-- ADMIN_BUSINESS_TOOLS_V1: respaldo -->
+    
+<section class="panel" id="calculatorSection">
       <div class="product-top">
         <div>
           <h2>Calculadora de gastos y ganancias</h2>
@@ -1019,6 +1241,197 @@
       </div>
     </section>
 
+    <!-- ADMIN_TOOLS_BELOW_CALCULATOR_V1: corte y respaldo -->
+<section class="panel" id="cashClosingSection">
+      <div class="product-top">
+        <div>
+          <h2>Corte de caja diario</h2>
+          <p class="panel-copy">
+            Revisa ventas, envíos, cancelaciones, gastos y diferencia de caja para una fecha.
+          </p>
+        </div>
+
+        <div class="dashboard-tools">
+          <input
+            id="cashClosingDateInput"
+            type="date"
+            aria-label="Fecha del corte de caja"
+          />
+          <button class="ghost-btn" id="cashClosingRefreshBtn" type="button">
+            Consultar corte
+          </button>
+          <button class="ghost-btn" id="cashClosingPrintBtn" type="button">
+            Imprimir
+          </button>
+        </div>
+      
+        <button
+          class="ghost-btn admin-tool-toggle"
+          id="cashClosingToggleBtn"
+          type="button"
+          aria-expanded="false"
+          aria-controls="cashClosingCollapsibleContent"
+          data-closed-label="Mostrar corte de caja"
+          data-open-label="Ocultar corte de caja"
+        >
+          <span data-role="admin-tool-toggle-label">Mostrar corte de caja</span>
+          <span class="admin-tool-toggle-icon" aria-hidden="true">▼</span>
+        </button>
+</div>
+      <div
+        class="admin-tool-collapsible-content"
+        id="cashClosingCollapsibleContent"
+        hidden
+      >
+
+
+      <p class="meta-note" id="cashClosingStatus">
+        Selecciona una fecha para calcular el corte.
+      </p>
+
+      <div class="cash-closing-grid">
+        <article class="cash-closing-card">
+          <span>Ventas válidas</span>
+          <strong id="cashGrossSales">$0.00 MXN</strong>
+        </article>
+
+        <article class="cash-closing-card">
+          <span>Pedidos válidos</span>
+          <strong id="cashValidOrders">0</strong>
+        </article>
+
+        <article class="cash-closing-card">
+          <span>Ticket promedio</span>
+          <strong id="cashAverageTicket">$0.00 MXN</strong>
+        </article>
+
+        <article class="cash-closing-card">
+          <span>Costos de envío cobrados</span>
+          <strong id="cashShippingFees">$0.00 MXN</strong>
+        </article>
+
+        <article class="cash-closing-card">
+          <span>Ventas entregadas</span>
+          <strong id="cashDeliveredSales">$0.00 MXN</strong>
+        </article>
+
+        <article class="cash-closing-card warning">
+          <span>Ventas aún pendientes</span>
+          <strong id="cashPendingSales">$0.00 MXN</strong>
+        </article>
+
+        <article class="cash-closing-card warning">
+          <span>Pedidos cancelados</span>
+          <strong id="cashCancelledOrders">0</strong>
+        </article>
+
+        <article class="cash-closing-card">
+          <span>Producto más vendido</span>
+          <strong id="cashTopProduct">Sin datos</strong>
+        </article>
+
+        <article class="cash-closing-card positive">
+          <span>Resultado después de gastos</span>
+          <strong id="cashNetAfterExpenses">$0.00 MXN</strong>
+        </article>
+
+        <article class="cash-closing-card">
+          <span>Diferencia de caja</span>
+          <strong id="cashDifference">$0.00 MXN</strong>
+        </article>
+      </div>
+
+      <div class="cash-closing-form">
+        <div class="form-group">
+          <label for="cashExpensesInput">Gastos del día</label>
+          <input id="cashExpensesInput" type="number" min="0" step="0.01" value="0" />
+        </div>
+
+        <div class="form-group">
+          <label for="cashCountedInput">Efectivo / total contado</label>
+          <input id="cashCountedInput" type="number" min="0" step="0.01" value="0" />
+        </div>
+
+        <div class="form-group full">
+          <label for="cashNotesInput">Notas del corte</label>
+          <textarea
+            id="cashNotesInput"
+            rows="3"
+            placeholder="Ejemplo: compra de aceite, diferencia explicada, pago pendiente..."
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="footer-actions">
+        <button class="save-btn" id="cashClosingSaveBtn" type="button">
+          Guardar corte
+        </button>
+      </div>
+      </div>
+</section>
+
+<section class="panel" id="adminBackupSection">
+      <div class="product-top">
+        <div>
+          <h2>Respaldo administrativo</h2>
+          <p class="panel-copy">
+            Descarga pedidos, historial, configuración, productos, promociones y cálculos.
+            Las contraseñas y sesiones no se incluyen.
+          </p>
+        </div>
+
+        <button class="btn" id="downloadBackupBtn" type="button">
+          Descargar respaldo
+        </button>
+      
+        <button
+          class="ghost-btn admin-tool-toggle"
+          id="adminBackupToggleBtn"
+          type="button"
+          aria-expanded="false"
+          aria-controls="adminBackupCollapsibleContent"
+          data-closed-label="Mostrar respaldo"
+          data-open-label="Ocultar respaldo"
+        >
+          <span data-role="admin-tool-toggle-label">Mostrar respaldo</span>
+          <span class="admin-tool-toggle-icon" aria-hidden="true">▼</span>
+        </button>
+</div>
+      <div
+        class="admin-tool-collapsible-content"
+        id="adminBackupCollapsibleContent"
+        hidden
+      >
+
+
+      <div class="backup-drop">
+        <div class="form-group">
+          <label for="restoreBackupInput">Archivo de respaldo JSON</label>
+          <input
+            id="restoreBackupInput"
+            type="file"
+            accept="application/json,.json"
+          />
+        </div>
+
+        <p class="backup-file-name" id="restoreBackupFileName">
+          No has seleccionado un archivo.
+        </p>
+
+        <div class="footer-actions">
+          <button class="danger-btn" id="restoreBackupBtn" type="button">
+            Restaurar respaldo
+          </button>
+        </div>
+
+        <p class="meta-note">
+          Restaurar reemplaza los pedidos y configuraciones actuales. Antes de hacerlo se requiere escribir RESTAURAR.
+        </p>
+      </div>
+      </div>
+</section>
+
+
   </main>
 
   <div class="toast" id="adminToast"></div>
@@ -1049,5 +1462,65 @@
   </div>
   <script src="admin.js"></script>
 <script src="catalog-admin.js"></script>
+  <script src="/pwa.js" defer></script>
+
+  <script>
+    // ADMIN_TOOLS_COLLAPSIBLE_SCRIPT_V1
+    (() => {
+      function bindAdminToolToggle(buttonId, contentId) {
+        const button = document.getElementById(buttonId);
+        const content = document.getElementById(contentId);
+
+        if (!button || !content) return;
+
+        const labelNode = button.querySelector(
+          '[data-role="admin-tool-toggle-label"]'
+        );
+
+        const setOpen = isOpen => {
+          const open = Boolean(isOpen);
+          button.setAttribute('aria-expanded', String(open));
+          content.hidden = !open;
+
+          if (labelNode) {
+            labelNode.textContent = open
+              ? button.dataset.openLabel
+              : button.dataset.closedLabel;
+          }
+        };
+
+        setOpen(false);
+
+        button.addEventListener('click', () => {
+          const isOpen =
+            button.getAttribute('aria-expanded') === 'true';
+          setOpen(!isOpen);
+        });
+      }
+
+      function initializeAdminToolToggles() {
+        bindAdminToolToggle(
+          'cashClosingToggleBtn',
+          'cashClosingCollapsibleContent'
+        );
+
+        bindAdminToolToggle(
+          'adminBackupToggleBtn',
+          'adminBackupCollapsibleContent'
+        );
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener(
+          'DOMContentLoaded',
+          initializeAdminToolToggles,
+          { once: true }
+        );
+      } else {
+        initializeAdminToolToggles();
+      }
+    })();
+  </script>
+
 </body>
 </html>
