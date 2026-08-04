@@ -105,6 +105,13 @@ const ALLOWED_ESTADOS = new Set([
   'Cancelado'
 ]);
 
+const EDITABLE_ESTADOS = new Set([
+  'Confirmado',
+  'Entregado',
+  'Cancelado'
+]);
+
+
 const DAILY_ARCHIVE_STATE_KEY = 'daily_archive_state_v1';
 const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
 
@@ -1529,8 +1536,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const estadoSolicitado = sanitizeText(req.body?.estado || '', 30);
-    if (!ALLOWED_ESTADOS.has(estadoSolicitado)) {
-      return res.status(400).json({ ok: false, message: 'Estado invalido' });
+    if (!EDITABLE_ESTADOS.has(estadoSolicitado)) {
+      return res.status(400).json({ ok: false, message: 'Solo se permite Confirmado, Entregado o Cancelado' });
     }
 
     const result = await pgPool.query(
