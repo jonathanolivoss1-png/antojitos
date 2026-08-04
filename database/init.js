@@ -232,42 +232,61 @@ async function writeDailyArchiveState(value) {
 }
 
 function archiveOrdersForDate(dateKey) {
-  if (!isValidDateKey(dateKey)) return { archivedCount: 0 };
+  if (!isValidDateKey(dateKey)) {
+    return { archivedCount: 0 };
+  }
 
-  const range = buildUtcRangeFromDateKey(dateKey, MEXICO_CITY_TZ_OFFSET_MINUTES);
-  const rows = db.prepare('SELECT * FROM pedidos WHERE fecha >= ? AND fecha < ? ORDER BY datetime(fecha) DESC, id DESC').all(range.startIso, range.endIso);
+  const range = buildUtcRangeFromDateKey(
+    dateKey,
+    MEXICO_CITY_TZ_OFFSET_MINUTES
+  );
+
+  const rows = db.prepare(`
+    SELECT *
+    FROM pedidos
+    WHERE fecha >= ?
+      AND fecha < ?
+    ORDER BY datetime(fecha) DESC, id DESC
+  `).all(range.startIso, range.endIso);
 
   if (!rows.length) {
     return { archivedCount: 0 };
   }
 
- const insert = db.prepare(`
-  INSERT INTO pedidos_archivados (
-    fecha,
-    cliente_token,
-    cliente,
-    telefono,
-    direccion,
-    tipo_entrega,
-    productos,
-    subtotal,
-    envio,
-    total,
-    estado,
-    creado_en,
-    origen_pedido_id
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO pedidos_archivados (
+      fecha,
+      fecha_original,
+      cliente_token,
+      cliente,
+      telefono,
+      direccion,
+      tipo_entrega,
+      productos,
+      subtotal,
+      envio,
+      total,
+      estado,
+      creado_en,
+      origen_pedido_id
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
 
   const tx = db.transaction(items => {
     items.forEach(order => {
       insert.run(
         dateKey,
-        order.cliente_token || order.clienteToken || '',
+        order.fecha,
+        order.cliente_token ||
+        order.clienteToken ||
+        '',
         order.cliente || '',
         order.telefono || '',
         order.direccion || '',
-        order.tipo_entrega || order.tipoEntrega || '',
+        order.tipo_entrega ||
+        order.tipoEntrega ||
+        '',
         order.productos || '[]',
         Number(order.subtotal || 0),
         Number(order.envio || 0),
@@ -281,15 +300,33 @@ function archiveOrdersForDate(dateKey) {
 
   tx(rows);
 
-  const result = db.prepare('DELETE FROM pedidos WHERE fecha >= ? AND fecha < ?').run(range.startIso, range.endIso);
-  const remaining = db.prepare('SELECT id FROM pedidos LIMIT 1').get();
+  const result = db.prepare(`
+    DELETE FROM pedidos
+    WHERE fecha >= ?
+      AND fecha < ?
+  `).run(range.startIso, range.endIso);
+
+  const remaining = db.prepare(`
+    SELECT id
+    FROM pedidos
+    LIMIT 1
+  `).get();
+
   if (!remaining) {
-    db.prepare("DELETE FROM sqlite_sequence WHERE name = 'pedidos'").run();
+    db.prepare(`
+      DELETE FROM sqlite_sequence
+      WHERE name = 'pedidos'
+    `).run();
   }
 
-  broadcastAdminEvent('orders-updated', { ts: Date.now(), reason: 'auto-archived-day' });
+  broadcastAdminEvent('orders-updated', {
+    ts: Date.now(),
+    reason: 'auto-archived-day'
+  });
 
-  return { archivedCount: Number(result.changes || 0) };
+  return {
+    archivedCount: Number(result.changes || 0)
+  };
 }
 
 async function seedGlobalConfigIfMissing() {
@@ -372,6 +409,7 @@ async function initDatabase() {
     CREATE TABLE IF NOT EXISTS pedidos_archivados (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fecha TEXT NOT NULL,
+      fecha_original TEXT,
       cliente_token TEXT NOT NULL DEFAULT '',
       cliente TEXT NOT NULL,
       telefono TEXT,
@@ -493,6 +531,27 @@ async function initDatabase() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_token ON pedidos (cliente_token);');
 
   const archivedColumns = db.prepare('PRAGMA table_info(pedidos_archivados)').all();
+  const hasArchivedFechaOriginal = archivedColumns.some(
+    column => column.name === 'fecha_original'
+  );
+
+  if (!hasArchivedFechaOriginal) {
+    db.exec(
+      "ALTER TABLE pedidos_archivados ADD COLUMN fecha_original TEXT;"
+    );
+  }
+
+  db.exec(`
+    UPDATE pedidos_archivados
+    SET fecha_original =
+      CASE
+        WHEN length(fecha) = 10
+          THEN fecha || 'T12:00:00-06:00'
+        ELSE fecha
+      END
+    WHERE fecha_original IS NULL
+       OR fecha_original = ''
+  `);
   const hasArchivedClienteTokenSnake = archivedColumns.some(column => column.name === 'cliente_token');
   const hasArchivedClienteTokenCamel = archivedColumns.some(column => column.name === 'clienteToken');
   const hasArchivedTipoEntregaSnake = archivedColumns.some(column => column.name === 'tipo_entrega');
@@ -518,6 +577,7 @@ async function initDatabase() {
       CREATE TABLE pedidos_archivados_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         fecha TEXT NOT NULL,
+        fecha_original TEXT,
         cliente_token TEXT NOT NULL DEFAULT '',
         cliente TEXT NOT NULL,
         telefono TEXT,
@@ -536,6 +596,7 @@ async function initDatabase() {
     db.exec(`
       INSERT INTO pedidos_archivados_new (
         fecha,
+        fecha_original,
         cliente_token,
         cliente,
         telefono,
@@ -551,6 +612,14 @@ async function initDatabase() {
       )
       SELECT
         fecha,
+        COALESCE(
+          fecha_original,
+          CASE
+            WHEN length(fecha) = 10
+              THEN fecha || 'T12:00:00-06:00'
+            ELSE fecha
+          END
+        ) AS fecha_original,
         COALESCE(cliente_token, clienteToken, '') AS cliente_token,
         cliente,
         telefono,
@@ -570,24 +639,73 @@ async function initDatabase() {
     db.exec('ALTER TABLE pedidos_archivados_new RENAME TO pedidos_archivados;');
   }
 
-  const adminUser = 'admin';
-  const adminPassword = process.env.ADMIN_PASSWORD || process.env.ADMIN_PASS || '123456';
-  const existing = db.prepare('SELECT id, password FROM usuarios WHERE usuario = ?').get(adminUser);
-  const shouldResetAdminPassword =
-    process.env.RESET_ADMIN_PASSWORD_ON_START === 'true';
+  /*
+   * PostgreSQL administra su usuario en routes/auth.js.
+   * SQLite solo crea o restablece su admin cuando se usa localmente.
+   */
+  if (!usePostgres) {
+    const adminUser = 'admin';
+    const configuredAdminPassword =
+      process.env.ADMIN_PASSWORD ||
+      process.env.ADMIN_PASS ||
+      '';
+    const resetAdminPassword =
+      process.env.RESET_ADMIN_PASSWORD_ON_START === 'true';
+    const isProduction =
+      process.env.NODE_ENV === 'production';
 
-  if (!existing) {
-    const hash = bcrypt.hashSync(adminPassword, 10);
-    db.prepare('INSERT INTO usuarios (usuario, password) VALUES (?, ?)').run(adminUser, hash);
-    console.log('Usuario admin inicial creado.');
-  } else if (
-    shouldResetAdminPassword &&
-    !bcrypt.compareSync(adminPassword, existing.password)
-  ) {
-    const hash = bcrypt.hashSync(adminPassword, 10);
-    db.prepare('UPDATE usuarios SET password = ? WHERE usuario = ?').run(hash, adminUser);
-    console.log('Contraseña de usuario admin restablecida.');
+    const existing = db.prepare(`
+      SELECT id, password
+      FROM usuarios
+      WHERE usuario = ?
+    `).get(adminUser);
+
+    if (!existing) {
+      if (isProduction && !configuredAdminPassword) {
+        throw new Error('Falta ADMIN_PASSWORD en producción');
+      }
+
+      const initialPassword =
+        configuredAdminPassword ||
+        'dev-only-change-me-123!';
+
+      const hash = bcrypt.hashSync(initialPassword, 10);
+
+      db.prepare(`
+        INSERT INTO usuarios (usuario, password)
+        VALUES (?, ?)
+      `).run(adminUser, hash);
+
+      console.log('Usuario admin local creado.');
+    } else if (resetAdminPassword) {
+      if (!configuredAdminPassword) {
+        throw new Error(
+          'RESET_ADMIN_PASSWORD_ON_START requiere ADMIN_PASSWORD'
+        );
+      }
+
+      const matches = bcrypt.compareSync(
+        configuredAdminPassword,
+        existing.password
+      );
+
+      if (!matches) {
+        const hash = bcrypt.hashSync(
+          configuredAdminPassword,
+          10
+        );
+
+        db.prepare(`
+          UPDATE usuarios
+          SET password = ?
+          WHERE usuario = ?
+        `).run(hash, adminUser);
+
+        console.warn('Contraseña del admin local restablecida.');
+      }
+    }
   }
+
   await seedGlobalConfigIfMissing();
 }
 

@@ -1,3 +1,19 @@
 node_modules/
 .env
 .DS_Store
+.env.*
+!.env.example
+
+# Bases de datos y temporales locales
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+database/*.db
+
+# Respaldos y Python
+*.backup
+*.bak
+__pycache__/
+*.pyc

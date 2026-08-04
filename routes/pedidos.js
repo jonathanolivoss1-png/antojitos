@@ -238,17 +238,28 @@ function buildCreatePayload(body) {
 function mapPedido(row) {
   return {
     id: Number(row.id),
-    clienteToken: row.cliente_token || row.clientetoken || row.clienteToken || '',
+    clienteToken:
+      row.cliente_token ||
+      row.clientetoken ||
+      row.clienteToken ||
+      '',
     cliente: row.cliente,
     telefono: row.telefono || '',
     direccion: row.direccion || '',
-    tipoEntrega: row.tipo_entrega || row.tipoentrega || row.tipoEntrega || '',
+    tipoEntrega:
+      row.tipo_entrega ||
+      row.tipoentrega ||
+      row.tipoEntrega ||
+      '',
     productos: parseProductos(row.productos),
     subtotal: Number(row.subtotal || 0),
     envio: Number(row.envio || 0),
     total: Number(row.total || 0),
     estado: row.estado,
-    fecha: normalizeDate(row.fecha)
+    fecha: normalizeDate(
+      row.fecha_original ||
+      row.fecha
+    )
   };
 }
 
@@ -278,6 +289,7 @@ async function initializeOrdersTables() {
       CREATE TABLE IF NOT EXISTS pedidos_archivados (
         id BIGSERIAL PRIMARY KEY,
         fecha DATE NOT NULL,
+        fecha_original TIMESTAMPTZ,
         cliente_token TEXT NOT NULL DEFAULT '',
         cliente TEXT NOT NULL,
         telefono TEXT,
@@ -292,6 +304,17 @@ async function initializeOrdersTables() {
         origen_pedido_id BIGINT
       );
 
+      ALTER TABLE pedidos_archivados
+      ADD COLUMN IF NOT EXISTS fecha_original TIMESTAMPTZ;
+
+      UPDATE pedidos_archivados
+      SET fecha_original =
+        (
+          fecha::timestamp +
+          INTERVAL '12 hours'
+        ) AT TIME ZONE 'America/Mexico_City'
+      WHERE fecha_original IS NULL;
+
       CREATE INDEX IF NOT EXISTS idx_pedidos_estado
         ON pedidos (estado);
 
@@ -303,6 +326,9 @@ async function initializeOrdersTables() {
 
       CREATE INDEX IF NOT EXISTS idx_pedidos_archivados_fecha
         ON pedidos_archivados (fecha DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_pedidos_archivados_cliente_token
+        ON pedidos_archivados (cliente_token);
 
       CREATE UNIQUE INDEX IF NOT EXISTS idx_pedidos_archivados_origen
         ON pedidos_archivados (origen_pedido_id)
@@ -337,6 +363,7 @@ async function initializeOrdersTables() {
     CREATE TABLE IF NOT EXISTS pedidos_archivados (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fecha TEXT NOT NULL,
+      fecha_original TEXT,
       cliente_token TEXT NOT NULL DEFAULT '',
       cliente TEXT NOT NULL,
       telefono TEXT,
@@ -363,8 +390,38 @@ async function initializeOrdersTables() {
     CREATE INDEX IF NOT EXISTS idx_pedidos_archivados_fecha
       ON pedidos_archivados (fecha DESC);
 
+    CREATE INDEX IF NOT EXISTS idx_pedidos_archivados_cliente_token
+      ON pedidos_archivados (cliente_token);
+
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pedidos_archivados_origen
       ON pedidos_archivados (origen_pedido_id);
+  `);
+
+  const archivedColumns =
+    db.prepare('PRAGMA table_info(pedidos_archivados)').all();
+
+  const hasOriginalDate =
+    archivedColumns.some(
+      column => column.name === 'fecha_original'
+    );
+
+  if (!hasOriginalDate) {
+    db.exec(`
+      ALTER TABLE pedidos_archivados
+      ADD COLUMN fecha_original TEXT
+    `);
+  }
+
+  db.exec(`
+    UPDATE pedidos_archivados
+    SET fecha_original =
+      CASE
+        WHEN length(fecha) = 10
+          THEN fecha || 'T12:00:00-06:00'
+        ELSE fecha
+      END
+    WHERE fecha_original IS NULL
+       OR fecha_original = ''
   `);
 
   console.log('Tablas de pedidos verificadas en SQLite.');
@@ -409,14 +466,25 @@ async function writeDailyArchiveState(value, queryable = pgPool) {
   );
 }
 
-async function archiveOrdersForDate(dateKey, tzOffsetMinutes, reason = 'archived-day') {
+async function archiveOrdersForDate(
+  dateKey,
+  tzOffsetMinutes,
+  reason = 'archived-day'
+) {
   await waitForOrdersTables();
 
   if (!isValidDateKey(dateKey)) {
-    return { archivedCount: 0, archivedOrders: [] };
+    return {
+      archivedCount: 0,
+      archivedOrders: []
+    };
   }
 
-  const range = buildUtcRangeFromDateKey(dateKey, tzOffsetMinutes);
+  const range = buildUtcRangeFromDateKey(
+    dateKey,
+    tzOffsetMinutes
+  );
+
   const client = await pgPool.connect();
 
   try {
@@ -437,77 +505,67 @@ async function archiveOrdersForDate(dateKey, tzOffsetMinutes, reason = 'archived
     const rows = rowsResult.rows;
 
     const postgresInsertQuery = `
-          INSERT INTO pedidos_archivados (
-            fecha,
-            cliente_token,
-            cliente,
-            telefono,
-            direccion,
-            tipo_entrega,
-            productos,
-            subtotal,
-            envio,
-            total,
-            estado,
-            creado_en,
-            origen_pedido_id
-          )
-          VALUES (
-            $1::date,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7::jsonb,
-            $8,
-            $9,
-            $10,
-            $11,
-            NOW(),
-            $12
-          )
-          ON CONFLICT (origen_pedido_id)
-WHERE origen_pedido_id IS NOT NULL
-DO NOTHING
-        `;
+      INSERT INTO pedidos_archivados (
+        fecha,
+        fecha_original,
+        cliente_token,
+        cliente,
+        telefono,
+        direccion,
+        tipo_entrega,
+        productos,
+        subtotal,
+        envio,
+        total,
+        estado,
+        creado_en,
+        origen_pedido_id
+      )
+      VALUES (
+        $1::date,
+        $2::timestamptz,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8::jsonb,
+        $9,
+        $10,
+        $11,
+        $12,
+        NOW(),
+        $13
+      )
+      ON CONFLICT (origen_pedido_id)
+      WHERE origen_pedido_id IS NOT NULL
+      DO NOTHING
+    `;
 
     const sqliteInsertQuery = `
-          INSERT OR IGNORE INTO pedidos_archivados (
-            fecha,
-            cliente_token,
-            cliente,
-            telefono,
-            direccion,
-            tipo_entrega,
-            productos,
-            subtotal,
-            envio,
-            total,
-            estado,
-            creado_en,
-            origen_pedido_id
-          )
-          VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          )
-        `;
+      INSERT OR IGNORE INTO pedidos_archivados (
+        fecha,
+        fecha_original,
+        cliente_token,
+        cliente,
+        telefono,
+        direccion,
+        tipo_entrega,
+        productos,
+        subtotal,
+        envio,
+        total,
+        estado,
+        creado_en,
+        origen_pedido_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
     for (const order of rows) {
       const params = [
         dateKey,
+        normalizeDate(order.fecha),
         order.cliente_token || '',
         order.cliente || '',
         order.telefono || '',
@@ -521,9 +579,19 @@ DO NOTHING
       ];
 
       if (isPostgresReady) {
-        await client.query(postgresInsertQuery, [...params, order.id]);
+        await client.query(
+          postgresInsertQuery,
+          [...params, order.id]
+        );
       } else {
-        await client.query(sqliteInsertQuery, [...params, new Date().toISOString(), order.id]);
+        await client.query(
+          sqliteInsertQuery,
+          [
+            ...params,
+            new Date().toISOString(),
+            order.id
+          ]
+        );
       }
     }
 
@@ -538,75 +606,94 @@ DO NOTHING
 
     await client.query('COMMIT');
 
-    if (deleteResult.rowCount > 0) {
-      broadcastAdminEvent('orders-updated', { ts: Date.now(), reason });
+    if (Number(deleteResult.rowCount || 0) > 0) {
+      broadcastAdminEvent('orders-updated', {
+        ts: Date.now(),
+        reason
+      });
     }
 
     return {
-      archivedCount: deleteResult.rowCount,
+      archivedCount: Number(deleteResult.rowCount || 0),
       archivedOrders: rows.map(mapPedido)
     };
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
     client.release();
   }
 }
 
-// === HISTORIAL_DIARIO_PATCH_V1: archivado de todos los días pendientes ===
 async function maybeArchiveAndResetDailyOrders() {
-  await waitForOrdersTables();
-
-  const todayKey = getMexicoCityDateKey();
-
-  /*
-   * Si Render estuvo apagado varios días, buscamos todas las fechas antiguas
-   * que todavía permanezcan en pedidos y las archivamos una por una.
-   */
-  const datesResult = await pgPool.query(
-    'SELECT fecha FROM pedidos ORDER BY fecha ASC'
-  );
-
-  const pendingDateKeys = Array.from(
-    new Set(
-      datesResult.rows
-        .map(row => {
-          const parsed = new Date(row.fecha);
-          if (Number.isNaN(parsed.getTime())) return '';
-          return getMexicoCityDateKey(parsed);
-        })
-        .filter(dateKey => isValidDateKey(dateKey) && dateKey < todayKey)
-    )
-  ).sort();
-
-  let archivedCount = 0;
-  const archivedDates = [];
-
-  for (const dateKey of pendingDateKeys) {
-    const archived = await archiveOrdersForDate(
-      dateKey,
-      MEXICO_CITY_TZ_OFFSET_MINUTES,
-      'auto-archived-day'
-    );
-
-    archivedCount += Number(archived.archivedCount || 0);
-    archivedDates.push(dateKey);
+  if (maybeArchiveAndResetDailyOrders.running) {
+    return maybeArchiveAndResetDailyOrders.running;
   }
 
-  await writeDailyArchiveState({
-    lastProcessedDate: todayKey,
-    archivedDates,
-    updatedAt: new Date().toISOString()
-  });
+  const cycle = (async () => {
+    await waitForOrdersTables();
 
-  return {
-    archivedCount,
-    archivedDates,
-    initialized: pendingDateKeys.length === 0,
-    skipped: pendingDateKeys.length === 0,
-    date: todayKey
-  };
+    const todayKey = getMexicoCityDateKey();
+
+    const datesResult = await pgPool.query(`
+      SELECT fecha
+      FROM pedidos
+      ORDER BY fecha ASC
+    `);
+
+    const pendingDateKeys = Array.from(
+      new Set(
+        datesResult.rows
+          .map(row => {
+            const parsed = new Date(row.fecha);
+
+            if (Number.isNaN(parsed.getTime())) {
+              return '';
+            }
+
+            return getMexicoCityDateKey(parsed);
+          })
+          .filter(
+            dateKey =>
+              isValidDateKey(dateKey) &&
+              dateKey < todayKey
+          )
+      )
+    ).sort();
+
+    let archivedCount = 0;
+
+    for (const dateKey of pendingDateKeys) {
+      const archived = await archiveOrdersForDate(
+        dateKey,
+        MEXICO_CITY_TZ_OFFSET_MINUTES,
+        'auto-archived-day'
+      );
+
+      archivedCount += Number(archived.archivedCount || 0);
+    }
+
+    await writeDailyArchiveState({
+      lastProcessedDate: todayKey,
+      archivedDates: pendingDateKeys,
+      updatedAt: new Date().toISOString()
+    });
+
+    return {
+      archivedCount,
+      archivedDates: pendingDateKeys,
+      skipped: pendingDateKeys.length === 0,
+      date: todayKey
+    };
+  })();
+
+  maybeArchiveAndResetDailyOrders.running = cycle;
+
+  try {
+    return await cycle;
+  } finally {
+    maybeArchiveAndResetDailyOrders.running = null;
+  }
 }
 
 router.post('/', async (req, res) => {
@@ -686,7 +773,6 @@ router.get('/day', requireAuth, async (req, res) => {
     await maybeArchiveAndResetDailyOrders();
 
     const date = sanitizeText(req.query?.date || '', 10);
-    const tzOffset = Number(req.query?.tzOffset);
 
     if (!isValidDateKey(date)) {
       return res.status(400).json({
@@ -695,7 +781,10 @@ router.get('/day', requireAuth, async (req, res) => {
       });
     }
 
-    const range = buildUtcRangeFromDateKey(date, tzOffset);
+    const range = buildUtcRangeFromDateKey(
+      date,
+      MEXICO_CITY_TZ_OFFSET_MINUTES
+    );
 
     const [activeResult, archivedResult] = await Promise.all([
       pgPool.query(
@@ -713,7 +802,7 @@ router.get('/day', requireAuth, async (req, res) => {
           SELECT *
           FROM pedidos_archivados
           WHERE fecha = $1::date
-          ORDER BY id DESC
+          ORDER BY fecha_original DESC, id DESC
         `,
         [date]
       )
@@ -726,24 +815,21 @@ router.get('/day', requireAuth, async (req, res) => {
     }));
 
     const archivedOrders = archivedResult.rows.map(row => ({
-      ...mapPedido({
-        ...row,
-        fecha: row.fecha_original || row.fecha
-      }),
+      ...mapPedido(row),
       archivado: true,
-      pedidoOriginalId: Number(row.origen_pedido_id || row.id)
+      pedidoOriginalId: Number(
+        row.origen_pedido_id || row.id
+      )
     }));
 
-    const pedidos = [...activeOrders, ...archivedOrders].sort((a, b) => {
-      const dateDifference =
-        new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
-
-      if (Number.isFinite(dateDifference) && dateDifference !== 0) {
-        return dateDifference;
-      }
-
-      return Number(b.id || 0) - Number(a.id || 0);
-    });
+    const pedidos = [
+      ...activeOrders,
+      ...archivedOrders
+    ].sort(
+      (a, b) =>
+        new Date(b.fecha).getTime() -
+        new Date(a.fecha).getTime()
+    );
 
     return res.json({
       ok: true,
@@ -757,6 +843,7 @@ router.get('/day', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error listando pedidos del día:', error);
+
     return res.status(500).json({
       ok: false,
       message: 'No se pudieron listar los pedidos del dia'
@@ -767,37 +854,79 @@ router.get('/day', requireAuth, async (req, res) => {
 router.get('/public', async (req, res) => {
   try {
     await waitForOrdersTables();
-    const clienteToken = sanitizeText(req.query?.clienteToken || '', 80);
+    await maybeArchiveAndResetDailyOrders();
 
-    if (!clienteToken) {
-      return res.json({ ok: true, pedidos: [] });
-    }
-
-    const result = await pgPool.query(
-      `
-        SELECT *
-        FROM pedidos
-        WHERE cliente_token = $1
-        ORDER BY fecha DESC, id DESC
-        LIMIT 100
-      `,
-      [clienteToken]
+    const clienteToken = sanitizeText(
+      req.query?.clienteToken || '',
+      80
     );
 
-    return res.json({ ok: true, pedidos: result.rows.map(mapPedido) });
+    if (!clienteToken) {
+      return res.json({
+        ok: true,
+        pedidos: []
+      });
+    }
+
+    const [activeResult, archivedResult] = await Promise.all([
+      pgPool.query(
+        `
+          SELECT *
+          FROM pedidos
+          WHERE cliente_token = $1
+          ORDER BY fecha DESC, id DESC
+          LIMIT 100
+        `,
+        [clienteToken]
+      ),
+      pgPool.query(
+        `
+          SELECT *
+          FROM pedidos_archivados
+          WHERE cliente_token = $1
+          ORDER BY fecha_original DESC, id DESC
+          LIMIT 100
+        `,
+        [clienteToken]
+      )
+    ]);
+
+    const pedidos = [
+      ...activeResult.rows.map(row => ({
+        ...mapPedido(row),
+        archivado: false
+      })),
+      ...archivedResult.rows.map(row => ({
+        ...mapPedido(row),
+        archivado: true
+      }))
+    ]
+      .sort(
+        (a, b) =>
+          new Date(b.fecha).getTime() -
+          new Date(a.fecha).getTime()
+      )
+      .slice(0, 100);
+
+    return res.json({
+      ok: true,
+      pedidos
+    });
   } catch (error) {
     console.error('Error listando pedidos públicos:', error);
-    return res.status(500).json({ ok: false, message: 'No se pudieron listar los pedidos' });
+
+    return res.status(500).json({
+      ok: false,
+      message: 'No se pudieron listar los pedidos'
+    });
   }
 });
 
-// === HISTORIAL_DIARIO_PATCH_V1: CSV de pedidos activos y archivados ===
 router.get('/day/export/csv', requireAuth, async (req, res) => {
   try {
     await maybeArchiveAndResetDailyOrders();
 
     const date = sanitizeText(req.query?.date || '', 10);
-    const tzOffset = Number(req.query?.tzOffset);
 
     if (!isValidDateKey(date)) {
       return res.status(400).json({
@@ -806,7 +935,10 @@ router.get('/day/export/csv', requireAuth, async (req, res) => {
       });
     }
 
-    const range = buildUtcRangeFromDateKey(date, tzOffset);
+    const range = buildUtcRangeFromDateKey(
+      date,
+      MEXICO_CITY_TZ_OFFSET_MINUTES
+    );
 
     const [activeResult, archivedResult] = await Promise.all([
       pgPool.query(
@@ -824,7 +956,7 @@ router.get('/day/export/csv', requireAuth, async (req, res) => {
           SELECT *
           FROM pedidos_archivados
           WHERE fecha = $1::date
-          ORDER BY id DESC
+          ORDER BY fecha_original DESC, id DESC
         `,
         [date]
       )
@@ -837,8 +969,7 @@ router.get('/day/export/csv', requireAuth, async (req, res) => {
       })),
       ...archivedResult.rows.map(row => ({
         ...row,
-        archivado: true,
-        fecha: row.fecha_original || row.fecha
+        archivado: true
       }))
     ];
 
@@ -860,12 +991,18 @@ router.get('/day/export/csv', requireAuth, async (req, res) => {
     const csvRows = [header.join(',')];
 
     rows.forEach(row => {
-      const parsed = parseProductos(row.productos);
-
-      const productosTexto = parsed
+      const productosTexto = parseProductos(row.productos)
         .map(item => {
-          const quantity = Number(item?.qty ?? item?.cantidad ?? 1);
-          const name = item?.name || item?.nombre || 'Producto';
+          const quantity = Number(
+            item?.qty ??
+            item?.cantidad ??
+            1
+          );
+          const name =
+            item?.name ||
+            item?.nombre ||
+            'Producto';
+
           return `${quantity}x ${String(name).replace(/,/g, ' ')}`;
         })
         .join(' | ');
@@ -906,6 +1043,7 @@ router.get('/day/export/csv', requireAuth, async (req, res) => {
     return res.send(csv);
   } catch (error) {
     console.error('Error exportando pedidos del día:', error);
+
     return res.status(500).json({
       ok: false,
       message: 'No se pudo exportar el CSV del dia'
@@ -913,7 +1051,6 @@ router.get('/day/export/csv', requireAuth, async (req, res) => {
   }
 });
 
-// === ELIMINAR_CUALQUIER_DIA_PATCH_V1 ===
 router.delete('/day', requireAuth, async (req, res) => {
   let client;
 
@@ -921,7 +1058,6 @@ router.delete('/day', requireAuth, async (req, res) => {
     await waitForOrdersTables();
 
     const date = sanitizeText(req.query?.date || '', 10);
-    const tzOffset = Number(req.query?.tzOffset);
 
     if (!isValidDateKey(date)) {
       return res.status(400).json({
@@ -930,7 +1066,10 @@ router.delete('/day', requireAuth, async (req, res) => {
       });
     }
 
-    const range = buildUtcRangeFromDateKey(date, tzOffset);
+    const range = buildUtcRangeFromDateKey(
+      date,
+      MEXICO_CITY_TZ_OFFSET_MINUTES
+    );
 
     client = await pgPool.connect();
     await client.query('BEGIN');
@@ -952,7 +1091,7 @@ router.delete('/day', requireAuth, async (req, res) => {
         SELECT *
         FROM pedidos_archivados
         WHERE fecha = $1::date
-        ORDER BY id DESC
+        ORDER BY fecha_original DESC, id DESC
         FOR UPDATE
       `,
       [date]
@@ -984,9 +1123,11 @@ router.delete('/day', requireAuth, async (req, res) => {
     }));
 
     const deletedArchivedOrders = archivedRowsResult.rows.map(row => ({
-      ...mapPedido({ ...row, fecha: row.fecha }),
+      ...mapPedido(row),
       archivado: true,
-      origenPedidoId: Number(row.origen_pedido_id || row.id)
+      origenPedidoId: Number(
+        row.origen_pedido_id || row.id
+      )
     }));
 
     const deletedOrders = [
@@ -994,9 +1135,14 @@ router.delete('/day', requireAuth, async (req, res) => {
       ...deletedArchivedOrders
     ];
 
-    const activeDeletedCount = Number(activeDeleteResult.rowCount || 0);
-    const archivedDeletedCount = Number(archivedDeleteResult.rowCount || 0);
-    const deletedCount = activeDeletedCount + archivedDeletedCount;
+    const activeDeletedCount = Number(
+      activeDeleteResult.rowCount || 0
+    );
+    const archivedDeletedCount = Number(
+      archivedDeleteResult.rowCount || 0
+    );
+    const deletedCount =
+      activeDeletedCount + archivedDeletedCount;
 
     if (deletedCount > 0) {
       broadcastAdminEvent('orders-updated', {
@@ -1076,7 +1222,6 @@ router.post('/day/restore', requireAuth, async (req, res) => {
     const activeOrders = incoming.filter(
       order => !Boolean(order?.archivado)
     );
-
     const archivedOrders = incoming.filter(
       order => Boolean(order?.archivado)
     );
@@ -1102,7 +1247,11 @@ router.post('/day/restore', requireAuth, async (req, res) => {
         fecha: order?.fecha
       });
 
-      if (!payload.cliente || !payload.tipoEntrega || !payload.productos.length) {
+      if (
+        !payload.cliente ||
+        !payload.tipoEntrega ||
+        !payload.productos.length
+      ) {
         continue;
       }
 
@@ -1154,17 +1303,44 @@ router.post('/day/restore', requireAuth, async (req, res) => {
     }
 
     for (const order of archivedOrders) {
-      const dateKey = String(order?.fecha || '').slice(0, 10);
-      const clienteToken = sanitizeText(order?.clienteToken || '', 80);
-      const cliente = sanitizeText(order?.cliente || '', 120);
-      const telefono = sanitizeText(order?.telefono || '', 30);
-      const direccion = sanitizeMultiline(order?.direccion || '', 220);
-      const tipoEntrega = sanitizeText(order?.tipoEntrega || '', 50);
-      const productos = normalizeProductos(order?.productos || []);
+      const originalDate = normalizeDate(order?.fecha);
+      const parsedOriginalDate = new Date(originalDate);
+
+      if (Number.isNaN(parsedOriginalDate.getTime())) {
+        continue;
+      }
+
+      const dateKey = getMexicoCityDateKey(parsedOriginalDate);
+
+      const clienteToken = sanitizeText(
+        order?.clienteToken || '',
+        80
+      );
+      const cliente = sanitizeText(
+        order?.cliente || '',
+        120
+      );
+      const telefono = sanitizeText(
+        order?.telefono || '',
+        30
+      );
+      const direccion = sanitizeMultiline(
+        order?.direccion || '',
+        220
+      );
+      const tipoEntrega = sanitizeText(
+        order?.tipoEntrega || '',
+        50
+      );
+      const productos = normalizeProductos(
+        order?.productos || []
+      );
       const subtotal = toMoney(order?.subtotal || 0);
       const envio = toMoney(order?.envio || 0);
       const total = toMoney(order?.total || 0);
-      const estado = normalizeEstado(order?.estado || 'Pendiente');
+      const estado = normalizeEstado(
+        order?.estado || 'Pendiente'
+      );
 
       const origenPedidoId = Number(
         order?.origenPedidoId ||
@@ -1173,7 +1349,12 @@ router.post('/day/restore', requireAuth, async (req, res) => {
         0
       );
 
-      if (!isValidDateKey(dateKey) || !cliente || !tipoEntrega || !productos.length) {
+      if (
+        !isValidDateKey(dateKey) ||
+        !cliente ||
+        !tipoEntrega ||
+        !productos.length
+      ) {
         continue;
       }
 
@@ -1184,6 +1365,7 @@ router.post('/day/restore', requireAuth, async (req, res) => {
           `
             INSERT INTO pedidos_archivados (
               fecha,
+              fecha_original,
               cliente_token,
               cliente,
               telefono,
@@ -1199,18 +1381,19 @@ router.post('/day/restore', requireAuth, async (req, res) => {
             )
             VALUES (
               $1::date,
-              $2,
+              $2::timestamptz,
               $3,
               $4,
               $5,
               $6,
-              $7::jsonb,
-              $8,
+              $7,
+              $8::jsonb,
               $9,
               $10,
               $11,
+              $12,
               NOW(),
-              $12
+              $13
             )
             ON CONFLICT (origen_pedido_id)
             WHERE origen_pedido_id IS NOT NULL
@@ -1218,6 +1401,7 @@ router.post('/day/restore', requireAuth, async (req, res) => {
           `,
           [
             dateKey,
+            originalDate,
             clienteToken,
             cliente,
             telefono,
@@ -1236,6 +1420,7 @@ router.post('/day/restore', requireAuth, async (req, res) => {
           `
             INSERT OR IGNORE INTO pedidos_archivados (
               fecha,
+              fecha_original,
               cliente_token,
               cliente,
               telefono,
@@ -1249,10 +1434,11 @@ router.post('/day/restore', requireAuth, async (req, res) => {
               creado_en,
               origen_pedido_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             dateKey,
+            originalDate,
             clienteToken,
             cliente,
             telefono,
@@ -1274,7 +1460,8 @@ router.post('/day/restore', requireAuth, async (req, res) => {
 
     await client.query('COMMIT');
 
-    const restoredCount = restoredActiveCount + restoredArchivedCount;
+    const restoredCount =
+      restoredActiveCount + restoredArchivedCount;
 
     if (restoredCount > 0) {
       broadcastAdminEvent('orders-updated', {

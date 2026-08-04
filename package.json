@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "init-db": "node database/init.js",
-    "test": "echo \"No tests configured\""
+    "test": "node scripts/smoke-test.js"
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,12 @@
 (function () {
-  const ESTADOS = ['Pendiente', 'Confirmado', 'Preparando', 'En camino', 'Entregado', 'Cancelado'];
+  const ESTADOS = [
+    'Pendiente',
+    'Confirmado',
+    'Preparando',
+    'En camino',
+    'Entregado',
+    'Cancelado'
+  ];
 
   const loginWrap = document.getElementById('loginWrap');
   const adminApp = document.getElementById('adminApp');
@@ -320,9 +327,22 @@
   }
 
   function formatDate(value) {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleString('es-MX', {
+    if (!value) return '-';
+
+    const raw = String(value).trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return formatDateKeyLabel(raw);
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return '-';
+    }
+
+    return date.toLocaleString('es-MX', {
+      timeZone: 'America/Mexico_City',
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -818,7 +838,7 @@
   async function loadDashboardData() {
     try {
       const date = getSelectedDateKey();
-      const tzOffset = new Date().getTimezoneOffset();
+      const tzOffset = getMexicoCityOffsetMinutes();
       const [statsResult, pedidosResult] = await Promise.all([
         api(`/api/admin/stats?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`),
         api(`/api/pedidos/day?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`)
@@ -849,11 +869,30 @@
   }
 
   function getTodayDateKey() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    if (typeof getMexicoCityDateKey === 'function') {
+      return getMexicoCityDateKey(new Date());
+    }
+
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Mexico_City',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+
+    const parts = formatter.formatToParts(new Date());
+    const year =
+      parts.find(part => part.type === 'year')?.value;
+    const month =
+      parts.find(part => part.type === 'month')?.value;
+    const day =
+      parts.find(part => part.type === 'day')?.value;
+
     return `${year}-${month}-${day}`;
+  }
+
+  function getMexicoCityOffsetMinutes() {
+    return 360;
   }
 
   function getSelectedDateKey() {
@@ -937,7 +976,7 @@
 // === ELIMINAR_CUALQUIER_DIA_FRONTEND_V1 ===
   async function deleteOrdersByDay() {
     const date = getSelectedDateKey();
-    const tzOffset = new Date().getTimezoneOffset();
+    const tzOffset = getMexicoCityOffsetMinutes();
 
     const confirmed = await requestDeleteDayConfirmation(date);
     if (!confirmed) return;
@@ -1514,7 +1553,7 @@
     if (exportDayCsvBtn) {
       exportDayCsvBtn.addEventListener('click', () => {
         const date = getSelectedDateKey();
-        const tzOffset = new Date().getTimezoneOffset();
+        const tzOffset = getMexicoCityOffsetMinutes();
         window.location.href = `/api/pedidos/day/export/csv?date=${encodeURIComponent(date)}&tzOffset=${encodeURIComponent(tzOffset)}`;
       });
     }
