@@ -1,0 +1,40 @@
+/* KITCHEN_PREPARATION_BADGES_V1 */
+
+.kitchen-preparation-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.kitchen-preparation-chip.pending {
+  background: #fff1b8;
+  color: #745000;
+}
+
+.kitchen-preparation-chip.preparing {
+  background: #ffe0c2;
+  color: #8d3e00;
+}
+
+.kitchen-preparation-chip.ready {
+  background: #dff1df;
+  color: #226528;
+}
+
+/* FIX_KITCHEN_BADGE_VERTICAL_DRIFT_V2 */
+.kitchen-preparation-slot {
+  display: block;
+  min-height: 1.75rem;
+  margin-top: 0.35rem;
+  line-height: 1;
+}
+
+.kitchen-preparation-slot .kitchen-preparation-chip {
+  margin-top: 0;
+}
+
