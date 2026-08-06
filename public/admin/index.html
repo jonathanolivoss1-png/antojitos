@@ -1012,6 +1012,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <meta name="theme-color" content="#C73E1D" />
   <link rel="stylesheet" href="proteccion-negocio.css?v=1">
+  <!-- REMOVE_LEGACY_BACKUP_AND_CASH_CLOSING_V1 -->
 </head>
 <body>
   <div class="login-wrap" id="loginWrap">
@@ -1452,10 +1453,10 @@
     </section>
 
     
-    <!-- ADMIN_BUSINESS_TOOLS_V1: corte de caja -->
+    
     
 
-    <!-- ADMIN_BUSINESS_TOOLS_V1: respaldo -->
+    
     
 <section class="panel" id="calculatorSection">
       <div class="product-top">
@@ -1550,195 +1551,8 @@
       </div>
     </section>
 
-    <!-- ADMIN_TOOLS_BELOW_CALCULATOR_V1: corte y respaldo -->
-<section class="panel" id="cashClosingSection">
-      <div class="product-top">
-        <div>
-          <h2>Corte de caja diario</h2>
-          <p class="panel-copy">
-            Revisa ventas, envíos, cancelaciones, gastos y diferencia de caja para una fecha.
-          </p>
-        </div>
+    
 
-        <div class="dashboard-tools">
-          <input
-            id="cashClosingDateInput"
-            type="date"
-            aria-label="Fecha del corte de caja"
-          />
-          <button class="ghost-btn" id="cashClosingRefreshBtn" type="button">
-            Consultar corte
-          </button>
-          <button class="ghost-btn" id="cashClosingPrintBtn" type="button">
-            Imprimir
-          </button>
-        </div>
-      
-        <button
-          class="ghost-btn admin-tool-toggle"
-          id="cashClosingToggleBtn"
-          type="button"
-          aria-expanded="false"
-          aria-controls="cashClosingCollapsibleContent"
-          data-closed-label="Mostrar corte de caja"
-          data-open-label="Ocultar corte de caja"
-        >
-          <span data-role="admin-tool-toggle-label">Mostrar corte de caja</span>
-          <span class="admin-tool-toggle-icon" aria-hidden="true">▼</span>
-        </button>
-</div>
-      <div
-        class="admin-tool-collapsible-content"
-        id="cashClosingCollapsibleContent"
-        hidden
-      >
-
-
-      <p class="meta-note" id="cashClosingStatus">
-        Selecciona una fecha para calcular el corte.
-      </p>
-
-      <div class="cash-closing-grid">
-        <article class="cash-closing-card">
-          <span>Ventas válidas</span>
-          <strong id="cashGrossSales">$0.00 MXN</strong>
-        </article>
-
-        <article class="cash-closing-card">
-          <span>Pedidos válidos</span>
-          <strong id="cashValidOrders">0</strong>
-        </article>
-
-        <article class="cash-closing-card">
-          <span>Ticket promedio</span>
-          <strong id="cashAverageTicket">$0.00 MXN</strong>
-        </article>
-
-        <article class="cash-closing-card">
-          <span>Costos de envío cobrados</span>
-          <strong id="cashShippingFees">$0.00 MXN</strong>
-        </article>
-
-        <article class="cash-closing-card">
-          <span>Ventas entregadas</span>
-          <strong id="cashDeliveredSales">$0.00 MXN</strong>
-        </article>
-
-        <article class="cash-closing-card warning">
-          <span>Ventas aún pendientes</span>
-          <strong id="cashPendingSales">$0.00 MXN</strong>
-        </article>
-
-        <article class="cash-closing-card warning">
-          <span>Pedidos cancelados</span>
-          <strong id="cashCancelledOrders">0</strong>
-        </article>
-
-        <article class="cash-closing-card">
-          <span>Producto más vendido</span>
-          <strong id="cashTopProduct">Sin datos</strong>
-        </article>
-
-        <article class="cash-closing-card positive">
-          <span>Resultado después de gastos</span>
-          <strong id="cashNetAfterExpenses">$0.00 MXN</strong>
-        </article>
-
-        <article class="cash-closing-card">
-          <span>Diferencia de caja</span>
-          <strong id="cashDifference">$0.00 MXN</strong>
-        </article>
-      </div>
-
-      <div class="cash-closing-form">
-        <div class="form-group">
-          <label for="cashExpensesInput">Gastos del día</label>
-          <input id="cashExpensesInput" type="number" min="0" step="0.01" value="0" />
-        </div>
-
-        <div class="form-group">
-          <label for="cashCountedInput">Efectivo / total contado</label>
-          <input id="cashCountedInput" type="number" min="0" step="0.01" value="0" />
-        </div>
-
-        <div class="form-group full">
-          <label for="cashNotesInput">Notas del corte</label>
-          <textarea
-            id="cashNotesInput"
-            rows="3"
-            placeholder="Ejemplo: compra de aceite, diferencia explicada, pago pendiente..."
-          ></textarea>
-        </div>
-      </div>
-
-      <div class="footer-actions">
-        <button class="save-btn" id="cashClosingSaveBtn" type="button">
-          Guardar corte
-        </button>
-      </div>
-      </div>
-</section>
-
-<section class="panel" id="adminBackupSection">
-      <div class="product-top">
-        <div>
-          <h2>Respaldo administrativo</h2>
-          <p class="panel-copy">
-            Descarga pedidos, historial, configuración, productos, promociones y cálculos.
-            Las contraseñas y sesiones no se incluyen.
-          </p>
-        </div>
-
-        <button class="btn" id="downloadBackupBtn" type="button">
-          Descargar respaldo
-        </button>
-      
-        <button
-          class="ghost-btn admin-tool-toggle"
-          id="adminBackupToggleBtn"
-          type="button"
-          aria-expanded="false"
-          aria-controls="adminBackupCollapsibleContent"
-          data-closed-label="Mostrar respaldo"
-          data-open-label="Ocultar respaldo"
-        >
-          <span data-role="admin-tool-toggle-label">Mostrar respaldo</span>
-          <span class="admin-tool-toggle-icon" aria-hidden="true">▼</span>
-        </button>
-</div>
-      <div
-        class="admin-tool-collapsible-content"
-        id="adminBackupCollapsibleContent"
-        hidden
-      >
-
-
-      <div class="backup-drop">
-        <div class="form-group">
-          <label for="restoreBackupInput">Archivo de respaldo JSON</label>
-          <input
-            id="restoreBackupInput"
-            type="file"
-            accept="application/json,.json"
-          />
-        </div>
-
-        <p class="backup-file-name" id="restoreBackupFileName">
-          No has seleccionado un archivo.
-        </p>
-
-        <div class="footer-actions">
-          <button class="danger-btn" id="restoreBackupBtn" type="button">
-            Restaurar respaldo
-          </button>
-        </div>
-
-        <p class="meta-note">
-          Restaurar reemplaza los pedidos y configuraciones actuales. Antes de hacerlo se requiere escribir RESTAURAR.
-        </p>
-      </div>
-      </div>
-</section>
 
 
   
@@ -1940,67 +1754,10 @@
       </div>
     </div>
   </div>
-  <script src="admin.js?v=alertas-pedidos-v1"></script>
+  <script src="admin.js?v=sin-corte-respaldo-v1"></script>
 <script src="catalog-admin.js"></script>
   <script src="/pwa.js" defer></script>
 
-  <script>
-    // ADMIN_TOOLS_COLLAPSIBLE_SCRIPT_V1
-    (() => {
-      function bindAdminToolToggle(buttonId, contentId) {
-        const button = document.getElementById(buttonId);
-        const content = document.getElementById(contentId);
-
-        if (!button || !content) return;
-
-        const labelNode = button.querySelector(
-          '[data-role="admin-tool-toggle-label"]'
-        );
-
-        const setOpen = isOpen => {
-          const open = Boolean(isOpen);
-          button.setAttribute('aria-expanded', String(open));
-          content.hidden = !open;
-
-          if (labelNode) {
-            labelNode.textContent = open
-              ? button.dataset.openLabel
-              : button.dataset.closedLabel;
-          }
-        };
-
-        setOpen(false);
-
-        button.addEventListener('click', () => {
-          const isOpen =
-            button.getAttribute('aria-expanded') === 'true';
-          setOpen(!isOpen);
-        });
-      }
-
-      function initializeAdminToolToggles() {
-        bindAdminToolToggle(
-          'cashClosingToggleBtn',
-          'cashClosingCollapsibleContent'
-        );
-
-        bindAdminToolToggle(
-          'adminBackupToggleBtn',
-          'adminBackupCollapsibleContent'
-        );
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener(
-          'DOMContentLoaded',
-          initializeAdminToolToggles,
-          { once: true }
-        );
-      } else {
-        initializeAdminToolToggles();
-      }
-    })();
-  </script>
 
   <script src="meseros-admin.js?v=personal-v1"></script>
   <script src="proteccion-negocio.js?v=1" defer></script>
