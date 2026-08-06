@@ -1985,6 +1985,13 @@
     );
   }
 
+  function displayOrderNumber(order, fallback = '') {
+    const value = Number(
+      order?.folio || order?.numeroPedido || fallback || order?.id || 0
+    );
+    return Number.isFinite(value) && value > 0 ? value : '';
+  }
+
   function renderOrders(orders) {
     if (!tableBody) return;
 
@@ -2023,7 +2030,7 @@
           data-order-id="${Number(order.id)}"
           data-order-archived="${isArchived ? 'true' : 'false'}"
         >
-          <td>#${index + 1}</td>
+          <td>#${displayOrderNumber(order, index + 1)}</td>
           <td>${escapeHtml(order.cliente || '-')}</td>
           <td>${escapeHtml(order.telefono || '-')}</td>
           <td>${escapeHtml(order.direccion || '-')}</td>
@@ -2061,6 +2068,7 @@
   function showOrderDetail(order) {
     if (!detailContent) return;
     const rows = [
+      ['Pedido', `#${displayOrderNumber(order)}`],
       ['Cliente', order.cliente || '-'],
       ['Teléfono', order.telefono || '-'],
       ['Dirección', order.direccion || '-'],

@@ -27,6 +27,8 @@ const kitchenChangesRoutes = require('./routes/cambios-cocina');
 const { createOrderIdempotency } = require('./middleware/idempotencia-pedidos');
 const { router: cocinaRoutes } = require('./routes/cocina');
 
+const { dailyOrderFolioMiddleware } = require('./middleware/folios-diarios');
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
@@ -95,6 +97,9 @@ if (pgPool) {
 }
 
 app.use(session(sessionOptions));
+
+// DAILY_FOLIOS_AND_HIDE_READY_V1
+app.use(dailyOrderFolioMiddleware);
 // ORDER_IDEMPOTENCY_V1
 const publicOrderIdempotency =
   createOrderIdempotency({

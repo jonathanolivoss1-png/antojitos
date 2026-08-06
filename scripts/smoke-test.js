@@ -17,6 +17,7 @@ const files = [
   'routes/cambios-cocina.js',
   'public/admin/cambios-cocina.js',
   'middleware/idempotencia-pedidos.js',
+  'middleware/folios-diarios.js',
   'routes/cocina.js',
   'public/cocina/cocina.js',
   'public/cocina/sw.js',

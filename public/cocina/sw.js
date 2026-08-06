@@ -1,7 +1,6 @@
 'use strict';
 
-const CACHE_NAME =
-  'anafres-cocina-cambios-v2';
+const CACHE_NAME = 'anafres-cocina-folios-listos-v1';
 
 const APP_SHELL = [
   '/cocina/',

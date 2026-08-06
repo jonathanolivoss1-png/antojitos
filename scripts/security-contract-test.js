@@ -248,6 +248,21 @@ includes(
   'La interfaz debe señalar productos retirados'
 );
 
+
+
+// DAILY_FOLIOS_AND_HIDE_READY_V1
+const dailyFolios = read('middleware/folios-diarios.js');
+includes(server, 'dailyOrderFolioMiddleware',
+  'El servidor debe activar los folios diarios');
+includes(dailyFolios, 'pedidos_folios_diarios',
+  'Debe existir un contador de folios por fecha');
+includes(dailyFolios, 'America/Mexico_City',
+  'El reinicio diario debe usar Ciudad de México');
+includes(kitchenRoute, ") <> 'Listo'",
+  'Cocina no debe listar pedidos Listo');
+includes(kitchenClient, "state === 'Listo'",
+  'La tarjeta debe retirarse inmediatamente');
+
 console.log(
   '✅ Pruebas de permisos, Cocina e idempotencia superadas.'
 );

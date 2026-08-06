@@ -1023,6 +1023,11 @@ async function activeOrders() {
           WHERE pc2.pedido_id = p.id
         )
       WHERE p.estado = 'Confirmado'
+        AND COALESCE(
+          pp.estado,
+          'Pendiente'
+        ) <> 'Listo'
+        -- HIDE_READY_ORDERS_FROM_KITCHEN_V1
       ORDER BY
         CASE COALESCE(
           pp.estado,

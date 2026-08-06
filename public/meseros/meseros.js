@@ -784,6 +784,13 @@
     openOverlay(cartOverlay);
   }
 
+  function displayOrderNumber(order, fallback = '') {
+    const value = Number(
+      order?.folio || order?.numeroPedido || fallback || order?.id || 0
+    );
+    return Number.isFinite(value) && value > 0 ? value : '';
+  }
+
   function showConfirmation() {
     if (!cart.length) {
       showToast('Agrega productos antes de enviar');
@@ -795,7 +802,7 @@
       return;
     }
     const totals = cartTotals();
-    confirmTitle.textContent = editingOrder ? `Confirmar cambios del pedido #${editingOrder.id}` : 'Confirmar orden';
+    confirmTitle.textContent = editingOrder ? `Confirmar cambios del pedido #${displayOrderNumber(editingOrder)}` : 'Confirmar orden';
     confirmSummary.textContent = `${editingOrder ? `Corrección · ${deliveryType}` : deliveryType} · ${totals.units} artículo${totals.units === 1 ? '' : 's'} · ${formatMoney(totals.total)}`;
     closeOverlay(cartOverlay);
     openOverlay(confirmOverlay);
@@ -845,16 +852,20 @@
       closeOverlay(confirmOverlay);
       if (correction) {
         const correctedId = editingOrder.id;
+        const correctedNumber = displayOrderNumber(
+          editingOrder, correctedId
+        );
+
         restoreNormalDraft(false);
         await loadCorrectableOrders(false);
-        successTitle.textContent = `Pedido #${correctedId} corregido`;
+        successTitle.textContent = `Pedido #${correctedNumber} corregido`;
         successText.textContent = `${order.tipoEntrega || deliveryType} · ${formatMoney(order.total || 0)} · Cambios guardados en el historial`;
       } else {
         cart = [];
         saveCart();
         renderCart();
         updateCartBar();
-        successTitle.textContent = `Orden #${order.id || ''} enviada`;
+        successTitle.textContent = `Orden #${displayOrderNumber(order)} enviada`;
         successText.textContent = `${order.tipoEntrega || deliveryType} · ${formatMoney(order.total || 0)} · Estado Confirmado`;
       }
       openOverlay(successOverlay);
@@ -939,10 +950,10 @@
     personalCorrectionLaunch?.classList.toggle('hidden', editing);
     personalEditingBanner?.classList.toggle('hidden', !editing);
     correctionReasonWrap?.classList.toggle('hidden', !editing);
-    if (personalEditingTitle) personalEditingTitle.textContent = editing ? `Corrigiendo pedido #${editingOrder.id}` : 'Corrigiendo pedido';
+    if (personalEditingTitle) personalEditingTitle.textContent = editing ? `Corrigiendo pedido #${displayOrderNumber(editingOrder)}` : 'Corrigiendo pedido';
     if (sendOrderBtn) sendOrderBtn.textContent = editing ? 'Guardar cambios' : 'Enviar orden';
     if (clearCartBtn) clearCartBtn.textContent = editing ? 'Cancelar corrección' : 'Vaciar';
-    if (cartDeliveryLabel) cartDeliveryLabel.textContent = editing ? `Pedido #${editingOrder.id} · ${deliveryType}` : deliveryType;
+    if (cartDeliveryLabel) cartDeliveryLabel.textContent = editing ? `Pedido #${displayOrderNumber(editingOrder)} · ${deliveryType}` : deliveryType;
   }
 
   function renderCorrectableOrders() {
@@ -956,7 +967,7 @@
     personalCorrectionOrdersList.innerHTML = correctionOrders.map(order => {
       const items = Array.isArray(order.productos) ? order.productos : [];
       const summary = items.slice(0, 4).map(item => `${Number(item.qty || 1)}x ${escapeHtml(item.name || 'Producto')}`).join(' · ');
-      return `<article class="personal-correction-card"><div class="personal-correction-card-top"><div><strong>Pedido #${Number(order.id)}</strong><p>${escapeHtml(order.tipoEntrega || '-')} · ${formatMoney(order.total || 0)}</p></div><small>${escapeHtml(order.estado || 'Confirmado')}</small></div><small>${summary || 'Sin productos'}${items.length > 4 ? '…' : ''}</small><button type="button" data-correct-order-id="${Number(order.id)}">Modificar este pedido</button></article>`;
+      return `<article class="personal-correction-card"><div class="personal-correction-card-top"><div><strong>Pedido #${displayOrderNumber(order)}</strong><p>${escapeHtml(order.tipoEntrega || '-')} · ${formatMoney(order.total || 0)}</p></div><small>${escapeHtml(order.estado || 'Confirmado')}</small></div><small>${summary || 'Sin productos'}${items.length > 4 ? '…' : ''}</small><button type="button" data-correct-order-id="${Number(order.id)}">Modificar este pedido</button></article>`;
     }).join('');
   }
 

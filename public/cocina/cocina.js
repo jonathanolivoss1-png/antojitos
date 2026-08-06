@@ -253,11 +253,7 @@
         ).length,
 
       ready:
-        orders.filter(
-          order =>
-            order.preparacion ===
-            'Listo'
-        ).length
+        orders.length
     };
   }
 
@@ -530,6 +526,13 @@
     `;
   }
 
+  function displayOrderNumber(order, fallback = '') {
+    const value = Number(
+      order?.folio || order?.numeroPedido || fallback || order?.id || 0
+    );
+    return Number.isFinite(value) && value > 0 ? value : '';
+  }
+
   function stateButtons(order) {
     return [
       'Pendiente',
@@ -562,7 +565,7 @@
         <header class="card-head">
           <div>
             <h2 class="order-number">
-              Pedido #${Number(order.id)}
+              Pedido #${displayOrderNumber(order)}
             </h2>
 
             <p class="order-meta">
@@ -646,9 +649,13 @@
         await api('/api/cocina/orders');
 
       const nextOrders =
-        Array.isArray(result.pedidos)
-          ? result.pedidos
-          : [];
+        (
+          Array.isArray(result.pedidos)
+            ? result.pedidos
+            : []
+        ).filter(
+          order => order.preparacion !== 'Listo'
+        );
 
       const nextIds =
         new Set(
@@ -728,7 +735,16 @@
             Number(orderId)
         );
 
-      if (order) {
+      if (state === 'Listo') {
+        const visibleNumber = displayOrderNumber(order, orderId);
+        orders = orders.filter(
+          item => Number(item.id) !== Number(orderId)
+        );
+        knownOrderIds.delete(Number(orderId));
+        showToast(
+          `Pedido #${visibleNumber} listo y retirado de la lista`
+        );
+      } else if (order) {
         order.preparacion = state;
       }
 
