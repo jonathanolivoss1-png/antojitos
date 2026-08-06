@@ -1,3 +1,4 @@
+// PERSONAL_VISIBLE_NAMES_V1
 (() => {
   'use strict';
 
@@ -98,7 +99,7 @@
     if (!users.length) {
       list.innerHTML = `
         <div class="waiter-empty">
-          Aún no has creado accesos para meseros.
+          Aún no has creado accesos para el personal.
         </div>
       `;
       return;
@@ -175,7 +176,7 @@
 
       createForm.reset();
       renderUsers();
-      showMessage('Acceso de mesero creado');
+      showMessage('Acceso de personal creado');
     } catch (error) {
       showMessage(error.message || 'No se pudo crear el acceso', true);
     }
@@ -216,7 +217,7 @@
 
     if (
       !window.confirm(
-        `¿Eliminar el acceso de ${user?.nombre || 'este mesero'}?`
+        `¿Eliminar el acceso de ${user?.nombre || 'este integrante del personal'}?`
       )
     ) {
       return;
@@ -249,7 +250,7 @@
 
     try {
       await navigator.clipboard.writeText(url);
-      showMessage('Enlace de meseros copiado');
+      showMessage('Enlace del personal copiado');
     } catch {
       window.prompt('Copia el enlace:', url);
     }
@@ -270,7 +271,7 @@
       <!doctype html>
       <html lang="es">
         <head>
-          <title>Acceso de meseros</title>
+          <title>Acceso del personal</title>
           <style>
             body { font-family: system-ui; text-align:center; padding:40px; color:#4e342e; }
             img { width:320px; max-width:90vw; }
@@ -279,7 +280,7 @@
           </style>
         </head>
         <body>
-          <h1>Acceso de meseros</h1>
+          <h1>Acceso del personal</h1>
           <img src="${escapeHtml(qrUrl)}" alt="Código QR" />
           <p>${escapeHtml(url)}</p>
           <script>window.onload=()=>window.print();<\/script>

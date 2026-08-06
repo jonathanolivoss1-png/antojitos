@@ -1081,7 +1081,7 @@
 
         <a class="ghost-btn" href="../index.html">Ver sitio</a>
         <!-- WAITER_TOPBAR_ACCESS_V1 -->
-        <a class="ghost-btn" href="/meseros/" target="_blank" rel="noopener">Abrir panel de meseros</a>
+        <a class="ghost-btn" href="/meseros/" target="_blank" rel="noopener">Abrir panel del personal</a>
         <button class="btn" id="logoutBtn" type="button">Cerrar sesión</button>
       </div>
     </section>
@@ -1220,14 +1220,14 @@
     <section class="panel waiter-admin-section" id="waiterAccessSection">
       <div class="product-top">
         <div>
-          <h2>Acceso de meseros</h2>
+          <h2>Acceso del personal</h2>
           <p class="panel-copy">
-            Crea usuarios con PIN para tomar órdenes desde teléfonos. Los meseros no tienen acceso al Dashboard, ganancias ni configuración.
+            Crea usuarios con PIN para tomar órdenes desde teléfonos. El personal no tiene acceso al Dashboard, ganancias ni configuración.
           </p>
         </div>
 
         <div class="waiter-admin-tools">
-          <a class="ghost-btn" href="/meseros/" target="_blank" rel="noopener">Abrir panel de meseros</a>
+          <a class="ghost-btn" href="/meseros/" target="_blank" rel="noopener">Abrir panel del personal</a>
           <button class="ghost-btn" id="copyWaiterLinkBtn" type="button">Copiar enlace</button>
           <button class="ghost-btn" id="showWaiterQrBtn" type="button">Mostrar QR</button>
           <button
@@ -1246,7 +1246,7 @@
         <form id="createWaiterForm">
           <div class="waiter-create-grid">
             <label>
-              Nombre del mesero
+              Nombre del integrante
               <input id="waiterNameInput" type="text" maxlength="120" required />
             </label>
 
@@ -1269,8 +1269,8 @@
 
         <div class="waiter-qr-panel" id="waiterQrPanel" hidden>
           <h3>Código QR del personal</h3>
-          <p class="panel-copy">Escanéalo para abrir <strong>/meseros/</strong>.</p>
-          <img id="waiterQrImage" alt="Código QR para el panel de meseros" />
+          <p class="panel-copy">Escanéalo para abrir el panel del personal.</p>
+          <img id="waiterQrImage" alt="Código QR para el panel del personal" />
           <button class="ghost-btn" id="printWaiterQrBtn" type="button">Imprimir QR</button>
         </div>
 
@@ -1830,6 +1830,6 @@
     })();
   </script>
 
-  <script src="meseros-admin.js?v=1"></script>
+  <script src="meseros-admin.js?v=personal-v1"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 {
-  "name": "Meseros · Antojitos Los Anafres",
-  "short_name": "Meseros Anafres",
+  "name": "Personal · Antojitos Los Anafres",
+  "short_name": "Personal Anafres",
   "description": "Toma rápida de órdenes para el personal de Antojitos Los Anafres.",
   "start_url": "/meseros/",
   "scope": "/meseros/",

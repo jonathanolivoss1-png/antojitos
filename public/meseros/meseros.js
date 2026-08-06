@@ -1,3 +1,4 @@
+// PERSONAL_VISIBLE_NAMES_V1
 (() => {
   'use strict';
 
@@ -206,7 +207,7 @@
 
     if (authenticated) {
       waiterNameLabel.textContent =
-        `${user?.nombre || user?.usuario || 'Mesero'} · Los Anafres`;
+        `${user?.nombre || user?.usuario || 'Personal'} · Los Anafres`;
       loadCatalog();
       startSettingsStream();
     } else {
@@ -878,7 +879,7 @@
         navigator.serviceWorker
           .register('./sw.js', { scope: './' })
           .catch(error => {
-            console.warn('No se pudo registrar la app de meseros', error);
+            console.warn('No se pudo registrar la app del personal', error);
           });
       });
     }

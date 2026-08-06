@@ -1,3 +1,4 @@
+// PERSONAL_VISIBLE_NAMES_V1
 // WAITER_MODULE_V1
 'use strict';
 
@@ -132,7 +133,7 @@ let tablesError = null;
 const tablesReady = initializeWaiterTables().catch(error => {
   tablesError = error;
   console.error(
-    'No se pudo inicializar el módulo de meseros:',
+    'No se pudo inicializar el módulo del personal:',
     error
   );
 });
@@ -154,7 +155,7 @@ async function requireWaiter(req, res, next) {
     if (!waiter?.id) {
       return res.status(401).json({
         ok: false,
-        message: 'Inicia sesión como mesero'
+        message: 'Inicia sesión como personal'
       });
     }
 
@@ -351,7 +352,7 @@ router.post('/login', async (req, res) => {
     req.session.regenerate(error => {
       if (error) {
         console.error(
-          'No se pudo regenerar la sesión del mesero:',
+          'No se pudo regenerar la sesión del personal:',
           error
         );
 
@@ -377,7 +378,7 @@ router.post('/login', async (req, res) => {
       return req.session.save(saveError => {
         if (saveError) {
           console.error(
-            'No se pudo guardar la sesión del mesero:',
+            'No se pudo guardar la sesión del personal:',
             saveError
           );
 
@@ -396,7 +397,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error(
-      'Error iniciando sesión de mesero:',
+      'Error iniciando sesión del personal:',
       error
     );
 
@@ -473,7 +474,7 @@ router.get('/session', async (req, res) => {
     });
   } catch (error) {
     console.error(
-      'Error consultando sesión de mesero:',
+      'Error consultando sesión del personal:',
       error
     );
 
@@ -1014,7 +1015,7 @@ router.post(
       });
     } catch (error) {
       console.error(
-        'Error guardando orden de mesero:',
+        'Error guardando orden del personal:',
         error
       );
 
@@ -1055,7 +1056,7 @@ router.get(
       });
     } catch (error) {
       console.error(
-        'Error listando meseros:',
+        'Error listando personal:',
         error
       );
 
@@ -1198,7 +1199,7 @@ router.post(
       }
 
       console.error(
-        'Error creando acceso de mesero:',
+        'Error creando acceso de personal:',
         error
       );
 
@@ -1369,7 +1370,7 @@ router.put(
       }
 
       console.error(
-        'Error actualizando acceso de mesero:',
+        'Error actualizando acceso de personal:',
         error
       );
 
@@ -1435,7 +1436,7 @@ router.delete(
       });
     } catch (error) {
       console.error(
-        'Error eliminando acceso de mesero:',
+        'Error eliminando acceso de personal:',
         error
       );
 

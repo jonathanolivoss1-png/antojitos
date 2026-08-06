@@ -1,4 +1,5 @@
-const CACHE_NAME = 'anafres-meseros-v1';
+// PERSONAL_VISIBLE_NAMES_V1
+const CACHE_NAME = 'anafres-personal-v2';
 const APP_SHELL = [
   '/meseros/',
   '/meseros/index.html',
@@ -21,7 +22,13 @@ self.addEventListener('activate', event => {
     caches.keys()
       .then(keys => Promise.all(
         keys
-          .filter(key => key.startsWith('anafres-meseros-') && key !== CACHE_NAME)
+          .filter(key =>
+            (
+              key.startsWith('anafres-meseros-') ||
+              key.startsWith('anafres-personal-')
+            ) &&
+            key !== CACHE_NAME
+          )
           .map(key => caches.delete(key))
       ))
       .then(() => self.clients.claim())
