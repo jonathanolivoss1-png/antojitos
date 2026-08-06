@@ -1,9 +1,10 @@
 // PERSONAL_VISIBLE_NAMES_V1
-const CACHE_NAME = 'anafres-personal-v2';
+const CACHE_NAME = 'anafres-personal-correcciones-v3';
 const APP_SHELL = [
   '/meseros/',
   '/meseros/index.html',
   '/meseros/meseros.js',
+  '/meseros/correcciones-personal.css',
   '/meseros/manifest.webmanifest',
   '/meseros/icon-192.png',
   '/meseros/icon-512.png'

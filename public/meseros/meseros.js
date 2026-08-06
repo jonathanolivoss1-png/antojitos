@@ -1,3 +1,4 @@
+// PERSONAL_CONTROLLED_CORRECTIONS_V1
 // PERSONAL_VISIBLE_NAMES_V1
 (() => {
   'use strict';
@@ -50,6 +51,19 @@
   const successText = document.getElementById('successText');
   const newOrderBtn = document.getElementById('newOrderBtn');
   const toast = document.getElementById('toast');
+  const openPersonalCorrectionsBtn = document.getElementById('openPersonalCorrectionsBtn');
+  const personalCorrectionLaunch = document.getElementById('personalCorrectionLaunch');
+  const personalCorrectionCount = document.getElementById('personalCorrectionCount');
+  const personalEditingBanner = document.getElementById('personalEditingBanner');
+  const personalEditingTitle = document.getElementById('personalEditingTitle');
+  const cancelCorrectionModeBtn = document.getElementById('cancelCorrectionModeBtn');
+  const personalCorrectionOverlay = document.getElementById('personalCorrectionOverlay');
+  const closePersonalCorrectionsBtn = document.getElementById('closePersonalCorrectionsBtn');
+  const refreshPersonalCorrectionsBtn = document.getElementById('refreshPersonalCorrectionsBtn');
+  const personalCorrectionOrdersList = document.getElementById('personalCorrectionOrdersList');
+  const correctionReasonWrap = document.getElementById('correctionReasonWrap');
+  const correctionReasonInput = document.getElementById('correctionReasonInput');
+  const confirmTitle = document.getElementById('confirmTitle');
 
   const CART_KEY = 'anafres_waiter_cart_v1';
   const TYPE_KEY = 'anafres_waiter_delivery_type_v1';
@@ -70,6 +84,9 @@
   let settingsStream = null;
   let deferredInstallPrompt = null;
   let sending = false;
+  let editingOrder = null;
+  let correctionOrders = [];
+  let correctionDraftBackup = null;
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -145,6 +162,7 @@
   }
 
   function saveCart() {
+    if (editingOrder) return;
     localStorage.setItem(
       CART_KEY,
       JSON.stringify(cart)
@@ -175,6 +193,7 @@
       formatMoney(totals.total);
     cartDeliveryLabel.textContent =
       deliveryType;
+    updateCorrectionModeUi();
   }
 
   function setDeliveryType(nextType) {
@@ -183,10 +202,12 @@
         ? 'Para llevar'
         : 'Comer aquí';
 
-    localStorage.setItem(
-      TYPE_KEY,
-      deliveryType
-    );
+    if (!editingOrder) {
+      localStorage.setItem(
+        TYPE_KEY,
+        deliveryType
+      );
+    }
 
     document
       .querySelectorAll('[data-delivery-type]')
@@ -201,6 +222,9 @@
   }
 
   function setAuthenticated(authenticated, user = null) {
+    if (!authenticated && editingOrder) {
+      restoreNormalDraft(false);
+    }
     waiter = authenticated ? user : null;
     loginScreen.classList.toggle('hidden', authenticated);
     waiterApp.classList.toggle('hidden', !authenticated);
@@ -742,10 +766,11 @@
   }
 
   function clearCart() {
-    if (cart.length && !window.confirm('¿Vaciar toda la orden?')) {
+    if (editingOrder) {
+      cancelCorrectionMode();
       return;
     }
-
+    if (cart.length && !window.confirm('¿Vaciar toda la orden?')) return;
     cart = [];
     saveCart();
     renderCart();
@@ -764,51 +789,58 @@
       showToast('Agrega productos antes de enviar');
       return;
     }
-
+    if (editingOrder && correctionReasonInput.value.trim().length < 5) {
+      showToast('Escribe el motivo del cambio');
+      correctionReasonInput.focus();
+      return;
+    }
     const totals = cartTotals();
-    confirmSummary.textContent =
-      `${deliveryType} · ${totals.units} artículo${totals.units === 1 ? '' : 's'} · ${formatMoney(totals.total)}`;
-
+    confirmTitle.textContent = editingOrder ? `Confirmar cambios del pedido #${editingOrder.id}` : 'Confirmar orden';
+    confirmSummary.textContent = `${editingOrder ? `Corrección · ${deliveryType}` : deliveryType} · ${totals.units} artículo${totals.units === 1 ? '' : 's'} · ${formatMoney(totals.total)}`;
     closeOverlay(cartOverlay);
     openOverlay(confirmOverlay);
   }
 
   async function sendOrder() {
     if (sending || !cart.length) return;
-
     sending = true;
     confirmSendBtn.disabled = true;
-    confirmSendBtn.textContent = 'Enviando...';
-
+    confirmSendBtn.textContent = editingOrder ? 'Guardando cambios...' : 'Enviando...';
     try {
-      const result = await api('/api/meseros/orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          tipoEntrega: deliveryType,
-          items: cart.map(item => ({
-            kind: item.kind,
-            productId: item.productId,
-            optionId: item.optionId,
-            choice: item.choice || '',
-            notes: item.notes || '',
-            qty: item.qty
-          }))
-        })
-      });
-
+      const correction = Boolean(editingOrder);
+      const endpoint = correction ? `/api/meseros/orders/${editingOrder.id}/correction` : '/api/meseros/orders';
+      const body = {
+        tipoEntrega: deliveryType,
+        items: cart.map(item => ({
+          kind: item.kind,
+          productId: item.productId,
+          optionId: item.optionId,
+          choice: item.choice || '',
+          notes: item.notes || '',
+          qty: item.qty
+        }))
+      };
+      if (correction) {
+        body.motivo = correctionReasonInput.value.trim();
+        body.revision = editingOrder.revision;
+      }
+      const result = await api(endpoint, { method: correction ? 'PUT' : 'POST', body: JSON.stringify(body) });
       const order = result.pedido || {};
-
-      cart = [];
-      saveCart();
-      renderCart();
-      updateCartBar();
       closeOverlay(confirmOverlay);
-
-      successTitle.textContent =
-        `Orden #${order.id || ''} enviada`;
-      successText.textContent =
-        `${order.tipoEntrega || deliveryType} · ${formatMoney(order.total || 0)} · Estado Confirmado`;
-
+      if (correction) {
+        const correctedId = editingOrder.id;
+        restoreNormalDraft(false);
+        await loadCorrectableOrders(false);
+        successTitle.textContent = `Pedido #${correctedId} corregido`;
+        successText.textContent = `${order.tipoEntrega || deliveryType} · ${formatMoney(order.total || 0)} · Cambios guardados en el historial`;
+      } else {
+        cart = [];
+        saveCart();
+        renderCart();
+        updateCartBar();
+        successTitle.textContent = `Orden #${order.id || ''} enviada`;
+        successText.textContent = `${order.tipoEntrega || deliveryType} · ${formatMoney(order.total || 0)} · Estado Confirmado`;
+      }
       openOverlay(successOverlay);
     } catch (error) {
       if (error.status === 401) {
@@ -817,12 +849,17 @@
         showToast('Tu sesión terminó. Vuelve a entrar.');
         return;
       }
-
-      showToast(error.message || 'No se pudo enviar la orden');
+      if (editingOrder && error.status === 409) {
+        closeOverlay(confirmOverlay);
+        showToast(error.message || 'El pedido cambió. Vuelve a cargarlo.');
+        await loadCorrectableOrders(false);
+        return;
+      }
+      showToast(error.message || (editingOrder ? 'No se pudo corregir el pedido' : 'No se pudo enviar la orden'));
     } finally {
       sending = false;
       confirmSendBtn.disabled = false;
-      confirmSendBtn.textContent = 'Confirmar y enviar';
+      confirmSendBtn.textContent = editingOrder ? 'Confirmar cambios' : 'Confirmar y enviar';
     }
   }
 
@@ -834,6 +871,132 @@
     renderCategories();
     renderCatalog();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cloneValue(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function parseStoredChoice(value) {
+    const text = String(value || '').trim();
+    const marker = ' · Nota: ';
+    if (!text) return { choice: '', notes: '' };
+    if (text.startsWith('Nota: ')) return { choice: '', notes: text.slice(6) };
+    const index = text.indexOf(marker);
+    return index >= 0
+      ? { choice: text.slice(0, index), notes: text.slice(index + marker.length) }
+      : { choice: text, notes: '' };
+  }
+
+  function currentCatalogPrice(productId, optionId) {
+    if (String(productId).startsWith('promo::')) {
+      const promo = promotions.find(item => String(item.id) === String(productId).slice(7));
+      const option = promo?.prices.find(item => String(item.id) === String(optionId));
+      return option ? Number(option.price || 0) : null;
+    }
+    const product = products.find(item => String(item.id) === String(productId));
+    const option = product?.options.find(item => String(item.id) === String(optionId));
+    return option ? Number(option.price || 0) : null;
+  }
+
+  function orderProductToCartItem(product, index) {
+    const productId = String(product.productId || '');
+    const optionId = String(product.optionId || '');
+    const parsed = parseStoredChoice(product.choice);
+    const currentPrice = currentCatalogPrice(productId, optionId);
+    const kind = productId.startsWith('promo::') ? 'promotion' : 'product';
+    return {
+      key: [kind, productId, optionId, parsed.choice || 'base', index].join('::'),
+      kind,
+      productId,
+      optionId,
+      choice: parsed.choice,
+      notes: parsed.notes,
+      name: String(product.name || 'Producto'),
+      price: currentPrice == null ? Number(product.price || 0) : currentPrice,
+      qty: Math.max(1, Number(product.qty || 1))
+    };
+  }
+
+  function updateCorrectionModeUi() {
+    const editing = Boolean(editingOrder);
+    personalCorrectionLaunch?.classList.toggle('hidden', editing);
+    personalEditingBanner?.classList.toggle('hidden', !editing);
+    correctionReasonWrap?.classList.toggle('hidden', !editing);
+    if (personalEditingTitle) personalEditingTitle.textContent = editing ? `Corrigiendo pedido #${editingOrder.id}` : 'Corrigiendo pedido';
+    if (sendOrderBtn) sendOrderBtn.textContent = editing ? 'Guardar cambios' : 'Enviar orden';
+    if (clearCartBtn) clearCartBtn.textContent = editing ? 'Cancelar corrección' : 'Vaciar';
+    if (cartDeliveryLabel) cartDeliveryLabel.textContent = editing ? `Pedido #${editingOrder.id} · ${deliveryType}` : deliveryType;
+  }
+
+  function renderCorrectableOrders() {
+    if (!personalCorrectionOrdersList) return;
+    if (!correctionOrders.length) {
+      personalCorrectionOrdersList.innerHTML = '<div class="personal-correction-empty">No hay pedidos internos Confirmados para corregir.</div>';
+      if (personalCorrectionCount) personalCorrectionCount.textContent = 'No hay pedidos Confirmados disponibles.';
+      return;
+    }
+    if (personalCorrectionCount) personalCorrectionCount.textContent = `${correctionOrders.length} pedido${correctionOrders.length === 1 ? '' : 's'} disponible${correctionOrders.length === 1 ? '' : 's'} para corregir.`;
+    personalCorrectionOrdersList.innerHTML = correctionOrders.map(order => {
+      const items = Array.isArray(order.productos) ? order.productos : [];
+      const summary = items.slice(0, 4).map(item => `${Number(item.qty || 1)}x ${escapeHtml(item.name || 'Producto')}`).join(' · ');
+      return `<article class="personal-correction-card"><div class="personal-correction-card-top"><div><strong>Pedido #${Number(order.id)}</strong><p>${escapeHtml(order.tipoEntrega || '-')} · ${formatMoney(order.total || 0)}</p></div><small>${escapeHtml(order.estado || 'Confirmado')}</small></div><small>${summary || 'Sin productos'}${items.length > 4 ? '…' : ''}</small><button type="button" data-correct-order-id="${Number(order.id)}">Modificar este pedido</button></article>`;
+    }).join('');
+  }
+
+  async function loadCorrectableOrders(openAfter = false) {
+    if (!personalCorrectionOrdersList) return;
+    personalCorrectionOrdersList.innerHTML = '<div class="personal-correction-empty">Actualizando pedidos…</div>';
+    try {
+      const result = await api('/api/meseros/orders/correctable');
+      correctionOrders = Array.isArray(result.pedidos) ? result.pedidos : [];
+      renderCorrectableOrders();
+      if (openAfter) openOverlay(personalCorrectionOverlay);
+    } catch (error) {
+      if (error.status === 401) {
+        setAuthenticated(false);
+        showToast('Tu sesión terminó. Vuelve a entrar.');
+        return;
+      }
+      personalCorrectionOrdersList.innerHTML = `<div class="personal-correction-empty">${escapeHtml(error.message || 'No se pudieron cargar los pedidos')}</div>`;
+    }
+  }
+
+  function startCorrection(order) {
+    const items = Array.isArray(order?.productos) ? order.productos : [];
+    if (!items.length || items.some(item => !item?.productId || !item?.optionId)) {
+      showToast('Este pedido antiguo no tiene datos suficientes para corregirse.');
+      return;
+    }
+    correctionDraftBackup = { cart: cloneValue(cart), deliveryType };
+    editingOrder = cloneValue(order);
+    cart = items.map(orderProductToCartItem);
+    correctionReasonInput.value = '';
+    setDeliveryType(order.tipoEntrega);
+    renderCart();
+    updateCartBar();
+    closeOverlay(personalCorrectionOverlay);
+    openOverlay(cartOverlay);
+  }
+
+  function restoreNormalDraft(showMessage = false) {
+    const backup = correctionDraftBackup || { cart: [], deliveryType: 'Comer aquí' };
+    editingOrder = null;
+    correctionDraftBackup = null;
+    cart = Array.isArray(backup.cart) ? cloneValue(backup.cart) : [];
+    correctionReasonInput.value = '';
+    setDeliveryType(backup.deliveryType);
+    saveCart();
+    renderCart();
+    updateCartBar();
+    if (showMessage) showToast('Corrección cancelada');
+  }
+
+  function cancelCorrectionMode() {
+    if (!editingOrder) return;
+    if (!window.confirm('¿Cancelar la corrección y regresar a tu orden anterior?')) return;
+    closeOverlay(cartOverlay);
+    restoreNormalDraft(true);
   }
 
   function setupInstall() {
@@ -887,6 +1050,18 @@
 
   loginForm.addEventListener('submit', handleLogin);
   logoutWaiterBtn.addEventListener('click', logout);
+  openPersonalCorrectionsBtn?.addEventListener('click', () => void loadCorrectableOrders(true));
+  closePersonalCorrectionsBtn?.addEventListener('click', () => closeOverlay(personalCorrectionOverlay));
+  refreshPersonalCorrectionsBtn?.addEventListener('click', () => void loadCorrectableOrders(false));
+  personalCorrectionOrdersList?.addEventListener('click', event => {
+    const button = event.target.closest('[data-correct-order-id]');
+    if (!button) return;
+    const id = Number(button.dataset.correctOrderId);
+    const order = correctionOrders.find(item => Number(item.id) === id);
+    if (order) startCorrection(order);
+  });
+  cancelCorrectionModeBtn?.addEventListener('click', cancelCorrectionMode);
+
 
   document
     .querySelectorAll('[data-delivery-type]')
@@ -993,7 +1168,7 @@
     saveCart();
   });
 
-  [itemOverlay, cartOverlay, confirmOverlay].forEach(overlay => {
+  [itemOverlay, cartOverlay, confirmOverlay, personalCorrectionOverlay].forEach(overlay => {
     overlay.addEventListener('click', event => {
       if (event.target === overlay) {
         closeOverlay(overlay);

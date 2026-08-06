@@ -1,0 +1,15 @@
+/* PERSONAL_CONTROLLED_CORRECTIONS_V1 */
+.order-history-section{margin-top:1rem;padding-top:1rem;border-top:2px solid rgba(78,52,46,.1)}
+.order-history-section h4{margin:0;color:#4e342e}
+.order-history-heading,.order-history-meta{display:flex;justify-content:space-between;align-items:flex-start;gap:.8rem}
+.order-history-heading span,.order-history-meta time{color:#7b6660;font-size:.84rem}
+.order-history-list{display:grid;gap:.85rem;margin-top:.85rem}
+.order-history-entry{display:grid;gap:.65rem;padding:.9rem;border:1px solid rgba(78,52,46,.12);border-radius:16px;background:#fffaf0}
+.order-history-reason{margin:0;color:#5f4d48}
+.order-history-change{display:grid;gap:.35rem;padding-top:.55rem;border-top:1px solid rgba(78,52,46,.08)}
+.order-history-values{display:grid;gap:.3rem;font-size:.88rem}
+.order-history-values .before{color:#8f5c52}
+.order-history-values .after{color:#2e7d32;font-weight:800}
+.order-history-muted{color:#7b6660}
+.order-history-error{color:#b3261e;font-weight:800}
+@media(max-width:560px){.order-history-heading,.order-history-meta{flex-direction:column}}

@@ -1,0 +1,17 @@
+// PERSONAL_CONTROLLED_CORRECTIONS_V1
+(function(){
+'use strict';
+const tableBody=document.getElementById('adminOrdersTableBody');
+const detailContent=document.getElementById('orderDetailContent');
+if(!tableBody||!detailContent)return;
+function esc(v){return String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')}
+function money(v){return new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(v||0))}
+function dt(v){try{return new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v))}catch{return String(v||'')}}
+function products(v){const a=Array.isArray(v)?v:[];return a.length?a.map(i=>`${Number(i.qty||i.cantidad||1)}x ${String(i.name||i.nombre||'Producto')}${String(i.choice||i.opcion||i.observaciones||'')?` (${String(i.choice||i.opcion||i.observaciones||'')})`:''}`).join(' · '):'Sin productos'}
+const labels={cliente:'Cliente',telefono:'Teléfono',direccion:'Dirección',tipoEntrega:'Tipo de entrega',productos:'Productos',subtotal:'Subtotal',envio:'Envío',total:'Total',estado:'Estado'};
+function val(f,v){return['subtotal','envio','total'].includes(f)?money(v):f==='productos'?products(v):String(v??'-')}
+function dif(c){const b=c.antes||{},a=c.despues||{},fs=Array.isArray(c.camposModificados)?c.camposModificados:[];return fs.length?fs.map(f=>`<div class="order-history-change"><strong>${esc(labels[f]||f)}</strong><div class="order-history-values"><span class="before">Antes: ${esc(val(f,b[f]))}</span><span class="after">Después: ${esc(val(f,a[f]))}</span></div></div>`).join(''):'<p class="order-history-muted">No se identificaron campos modificados.</p>'}
+function render(cs){if(!cs.length)return'<section class="order-history-section"><h4>Cambios realizados</h4><p class="order-history-muted">Este pedido no tiene correcciones registradas.</p></section>';return`<section class="order-history-section"><div class="order-history-heading"><h4>Cambios realizados</h4><span>${cs.length} ${cs.length===1?'cambio':'cambios'}</span></div><div class="order-history-list">${cs.map(c=>`<article class="order-history-entry"><div class="order-history-meta"><strong>${esc(c.usuario||'Administración')}</strong><time>${esc(dt(c.fecha))}</time></div><p class="order-history-reason">Motivo: <strong>${esc(c.motivo||'-')}</strong></p>${dif(c)}</article>`).join('')}</div></section>`}
+async function append(id){detailContent.querySelector('.order-history-section')?.remove();detailContent.insertAdjacentHTML('beforeend','<section class="order-history-section"><h4>Cambios realizados</h4><p class="order-history-muted">Cargando historial…</p></section>');try{const r=await fetch(`/api/admin/pedidos/${id}/historial-correcciones`,{credentials:'same-origin'});const d=await r.json().catch(()=>null);if(!r.ok)throw new Error(d?.message||'No se pudo cargar el historial');detailContent.querySelector('.order-history-section')?.remove();detailContent.insertAdjacentHTML('beforeend',render(d.corrections||[]))}catch(e){const s=detailContent.querySelector('.order-history-section');if(s)s.innerHTML=`<h4>Cambios realizados</h4><p class="order-history-error">${esc(e.message||'No se pudo cargar el historial')}</p>`}}
+tableBody.addEventListener('click',e=>{const b=e.target.closest('button[data-action="view"]');if(!b)return;const id=Number(b.closest('tr[data-order-id]')?.dataset.orderId||0);if(id)queueMicrotask(()=>void append(id))});
+})();

@@ -11,6 +11,9 @@ const files = [
   'public/admin/catalog-admin.js',
   'routes/proteccion-negocio.js',
   'public/admin/proteccion-negocio.js',
+  'public/admin/historial-pedidos.js',
+  'public/meseros/meseros.js',
+  'routes/correcciones-personal.js',
 ].filter(file => fs.existsSync(file));
 
 let failed = false;

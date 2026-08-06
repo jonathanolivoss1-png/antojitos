@@ -20,6 +20,7 @@ const {
 const adminRoutes = require('./routes/admin');
 const businessProtectionRoutes = require('./routes/proteccion-negocio');
 const meserosRoutes = require('./routes/meseros');
+const personalCorrectionsRoutes = require('./routes/correcciones-personal');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -105,6 +106,7 @@ app.use('/api/pedidos', pedidosRoutes);
 app.use('/api/admin', businessProtectionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/meseros', meserosRoutes);
+app.use('/api/meseros', personalCorrectionsRoutes);
 
 app.use(express.static(path.join(__dirname, 'public')));
 

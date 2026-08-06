@@ -680,6 +680,7 @@
     }
   </style>
   <!-- PERSONAL_VISIBLE_NAMES_V1 -->
+  <link rel="stylesheet" href="./correcciones-personal.css?v=1">
 </head>
 <body>
   <section class="login-screen" id="loginScreen">
@@ -731,6 +732,16 @@
         <button class="active" data-delivery-type="Comer aquí" type="button">🍽️ Comer aquí</button>
         <button data-delivery-type="Para llevar" type="button">🥡 Para llevar</button>
       </section>
+      <!-- PERSONAL_CONTROLLED_CORRECTIONS_V1 -->
+      <section class="personal-correction-launch" id="personalCorrectionLaunch">
+        <button class="personal-correction-button" id="openPersonalCorrectionsBtn" type="button">✏️ Corregir pedido enviado</button>
+        <small id="personalCorrectionCount">Solo aparecen pedidos internos que siguen Confirmados.</small>
+      </section>
+      <section class="personal-editing-banner hidden" id="personalEditingBanner" aria-live="polite">
+        <div><strong id="personalEditingTitle">Corrigiendo pedido</strong><small>Los precios se comprobarán nuevamente al guardar.</small></div>
+        <button id="cancelCorrectionModeBtn" type="button">Cancelar corrección</button>
+      </section>
+
 
       <div class="search-wrap">
         <input class="search-input" id="catalogSearchInput" type="search" placeholder="Buscar producto o promoción" autocomplete="off" />
@@ -748,6 +759,20 @@
       </span>
       <span>Ver orden →</span>
     </button>
+  </div>
+
+  
+  <!-- PERSONAL_CONTROLLED_CORRECTIONS_V1 -->
+  <div class="overlay hidden" id="personalCorrectionOverlay" aria-hidden="true">
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="personalCorrectionTitle">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div><h2 id="personalCorrectionTitle">Corregir pedido</h2><p class="muted">Elige un pedido interno que todavía esté Confirmado.</p></div>
+        <button class="sheet-close" id="closePersonalCorrectionsBtn" type="button" aria-label="Cerrar">×</button>
+      </div>
+      <div class="sheet-actions"><button class="ghost" id="refreshPersonalCorrectionsBtn" type="button">Actualizar lista</button></div>
+      <div class="personal-correction-list" id="personalCorrectionOrdersList"><div class="personal-correction-empty">Cargando pedidos…</div></div>
+    </section>
   </div>
 
   <div class="overlay hidden" id="itemOverlay" aria-hidden="true">
@@ -790,6 +815,12 @@
       </div>
 
       <div class="cart-items" id="cartItems"></div>
+      <div class="field personal-correction-reason hidden" id="correctionReasonWrap">
+        <label for="correctionReasonInput">Motivo del cambio</label>
+        <textarea id="correctionReasonInput" maxlength="300" placeholder="Ej. El cliente agregó una bebida"></textarea>
+        <small class="muted">Es obligatorio y aparecerá en el historial del pedido.</small>
+      </div>
+
       <div class="cart-total">
         <span>Total</span>
         <strong id="cartSheetTotal">$0</strong>
@@ -805,7 +836,7 @@
   <div class="overlay hidden" id="confirmOverlay" aria-hidden="true">
     <section class="success-card" role="dialog" aria-modal="true">
       <div class="success-icon">🧾</div>
-      <h2>Confirmar orden</h2>
+      <h2 id="confirmTitle">Confirmar orden</h2>
       <p class="muted" id="confirmSummary"></p>
       <div class="sheet-actions">
         <button class="ghost" id="cancelConfirmBtn" type="button">Regresar</button>
@@ -824,6 +855,6 @@
   </div>
 
   <div class="toast" id="toast" aria-live="polite"></div>
-  <script src="./meseros.js?v=personal-v1"></script>
+  <script src="./meseros.js?v=correcciones-personal-v1"></script>
 </body>
 </html>
