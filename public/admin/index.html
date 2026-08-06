@@ -1011,6 +1011,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <meta name="theme-color" content="#C73E1D" />
+  <link rel="stylesheet" href="proteccion-negocio.css?v=1">
 </head>
 <body>
   <div class="login-wrap" id="loginWrap">
@@ -1740,7 +1741,178 @@
 </section>
 
 
-  </main>
+  
+<!-- BUSINESS_PROTECTION_V1 -->
+<details class="admin-section business-protection" id="businessProtectionSection">
+  <summary>Protección de datos y corrección de pedidos</summary>
+
+  <div class="protection-grid">
+    <section class="protection-card">
+      <h3>Estado de PostgreSQL</h3>
+      <p>
+        Confirma que el historial de la calculadora y las correcciones
+        estén guardándose de forma global.
+      </p>
+      <div class="protection-status" id="businessProtectionSummary">
+        Consultando…
+      </div>
+    </section>
+
+    <section class="protection-card">
+      <h3>Respaldo completo y restauración verificada</h3>
+      <p>
+        El respaldo incluye configuración, productos, promociones,
+        pedidos, historial, calculadora, Personal y correcciones.
+        La prueba usa tablas temporales y no modifica producción.
+      </p>
+
+      <div class="protection-actions">
+        <button class="primary" id="downloadCompleteBackupBtn" type="button">
+          Descargar respaldo completo
+        </button>
+
+        <label class="file-label" for="completeBackupFile">
+          Seleccionar respaldo
+        </label>
+        <input
+          id="completeBackupFile"
+          type="file"
+          accept="application/json,.json"
+        >
+
+        <span id="chosenBackupFile">Ningún archivo seleccionado</span>
+      </div>
+
+      <div class="protection-actions">
+        <button id="testCompleteRestoreBtn" type="button">
+          Probar restauración
+        </button>
+
+        <input
+          class="restore-confirmation"
+          id="restoreConfirmation"
+          type="text"
+          placeholder="Escribe RESTAURAR"
+          autocomplete="off"
+        >
+
+        <button class="danger" id="restoreCompleteBackupBtn" type="button">
+          Restaurar datos
+        </button>
+      </div>
+
+      <div class="protection-status" id="backupRestoreStatus">
+        Descarga un respaldo o selecciona uno para probarlo.
+      </div>
+
+      <h4>Copias automáticas previas a una restauración</h4>
+      <div class="protection-actions">
+        <button id="refreshAutomaticCopiesBtn" type="button">
+          Actualizar copias
+        </button>
+      </div>
+      <div class="automatic-copies" id="automaticCopiesList"></div>
+    </section>
+
+    <section class="protection-card">
+      <h3>Corrección controlada de pedidos</h3>
+      <p>
+        Corrige un pedido activo sin borrar el registro original.
+        El motivo, los campos modificados y las versiones anterior y
+        nueva quedarán guardados.
+      </p>
+
+      <div class="protection-actions">
+        <select id="correctableOrderSelect" class="restore-confirmation">
+          <option value="">Selecciona un pedido</option>
+        </select>
+        <button id="refreshCorrectableOrdersBtn" type="button">
+          Actualizar pedidos
+        </button>
+      </div>
+
+      <form class="correction-form" id="controlledCorrectionForm" hidden>
+        <div class="correction-two-columns">
+          <label>
+            Cliente
+            <input id="correctionCustomer" type="text" maxlength="180" required>
+          </label>
+
+          <label>
+            Teléfono
+            <input id="correctionPhone" type="text" maxlength="80">
+          </label>
+
+          <label>
+            Tipo de entrega
+            <input id="correctionDelivery" type="text" maxlength="60" required>
+          </label>
+
+          <label>
+            Envío
+            <input
+              id="correctionShipping"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+            >
+          </label>
+
+          <label>
+            Estado
+            <select id="correctionState" required>
+              <option value="Confirmado">Confirmado</option>
+              <option value="Entregado">Entregado</option>
+              <option value="Cancelado">Cancelado</option>
+            </select>
+          </label>
+
+          <label>
+            Dirección
+            <input id="correctionAddress" type="text" maxlength="300">
+          </label>
+        </div>
+
+        <div>
+          <strong>Productos</strong>
+          <div class="correction-products" id="correctionProducts"></div>
+          <div class="protection-actions">
+            <button id="addCorrectionProductBtn" type="button">
+              Agregar producto
+            </button>
+          </div>
+        </div>
+
+        <div class="correction-total" id="correctionTotal"></div>
+
+        <label>
+          Motivo obligatorio de la corrección
+          <textarea
+            id="correctionReason"
+            minlength="5"
+            maxlength="300"
+            placeholder="Ejemplo: el cliente agregó una bebida después de enviar la orden"
+            required
+          ></textarea>
+        </label>
+
+        <div class="protection-actions">
+          <button class="primary" type="submit">
+            Guardar corrección
+          </button>
+        </div>
+
+        <div class="protection-status" id="correctionStatus"></div>
+
+        <h4>Historial de correcciones del pedido</h4>
+        <div class="correction-history" id="correctionHistory"></div>
+      </form>
+    </section>
+  </div>
+</details>
+
+</main>
 
   <div class="toast" id="adminToast"></div>
 
@@ -1831,5 +2003,6 @@
   </script>
 
   <script src="meseros-admin.js?v=personal-v1"></script>
+  <script src="proteccion-negocio.js?v=1" defer></script>
 </body>
 </html>

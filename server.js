@@ -18,6 +18,7 @@ const {
   maybeArchiveAndResetDailyOrders
 } = require('./routes/pedidos');
 const adminRoutes = require('./routes/admin');
+const businessProtectionRoutes = require('./routes/proteccion-negocio');
 const meserosRoutes = require('./routes/meseros');
 
 const app = express();
@@ -101,6 +102,7 @@ app.get('/test-postgres', async (req, res) => {
 
 app.use('/api', authRoutes);
 app.use('/api/pedidos', pedidosRoutes);
+app.use('/api/admin', businessProtectionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/meseros', meserosRoutes);
 

@@ -8,7 +8,9 @@ const files = [
   'routes/admin.js',
   'database/init.js',
   'public/admin/admin.js',
-  'public/admin/catalog-admin.js'
+  'public/admin/catalog-admin.js',
+  'routes/proteccion-negocio.js',
+  'public/admin/proteccion-negocio.js',
 ].filter(file => fs.existsSync(file));
 
 let failed = false;
