@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover"
+  >
+  <meta
+    name="theme-color"
+    content="#4e342e"
+  >
+  <meta
+    name="apple-mobile-web-app-capable"
+    content="yes"
+  >
+  <meta
+    name="apple-mobile-web-app-status-bar-style"
+    content="default"
+  >
+  <meta
+    name="apple-mobile-web-app-title"
+    content="Cocina Anafres"
+  >
+  <title>Cocina · Antojitos Los Anafres</title>
+  <link
+    rel="manifest"
+    href="./manifest.webmanifest"
+  >
+  <link
+    rel="apple-touch-icon"
+    href="./icon-192.png"
+  >
+  <link
+    rel="stylesheet"
+    href="./cocina.css?v=cambios-detallados-v1"
+  >
+</head>
+<body>
+  <div
+    class="toast hidden"
+    id="toast"
+    aria-live="polite"
+  ></div>
+
+  <main
+    class="login-shell"
+    id="loginView"
+  >
+    <section class="login-card">
+      <div class="brand-mark">🍳</div>
+      <p class="eyebrow">
+        Antojitos Los Anafres
+      </p>
+      <h1>Acceso de Cocina</h1>
+      <p class="muted">
+        Consulta y prepara únicamente los pedidos activos.
+      </p>
+
+      <form id="loginForm">
+        <label>
+          Usuario
+          <input
+            id="loginUser"
+            name="usuario"
+            autocomplete="username"
+            required
+          >
+        </label>
+
+        <label>
+          PIN
+          <input
+            id="loginPin"
+            name="pin"
+            type="password"
+            inputmode="numeric"
+            autocomplete="current-password"
+            pattern="[0-9]{4,12}"
+            required
+          >
+        </label>
+
+        <button
+          class="primary full"
+          id="loginButton"
+          type="submit"
+        >
+          Entrar a Cocina
+        </button>
+      </form>
+
+      <p
+        class="form-message"
+        id="loginMessage"
+      ></p>
+    </section>
+  </main>
+
+  <div
+    class="app-shell hidden"
+    id="appView"
+  >
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">
+          Antojitos Los Anafres
+        </p>
+        <h1>Cocina</h1>
+        <p
+          class="header-user"
+          id="kitchenUserLabel"
+        ></p>
+      </div>
+
+      <div class="header-actions">
+        <button
+          class="ghost compact hidden"
+          id="installButton"
+          type="button"
+        >
+          Instalar
+        </button>
+
+        <button
+          class="ghost compact"
+          id="refreshButton"
+          type="button"
+        >
+          Actualizar
+        </button>
+
+        <button
+          class="ghost compact"
+          id="logoutButton"
+          type="button"
+        >
+          Salir
+        </button>
+      </div>
+    </header>
+
+    <section class="summary-strip">
+      <article>
+        <strong id="pendingCount">0</strong>
+        <span>Pendientes</span>
+      </article>
+
+      <article>
+        <strong id="preparingCount">0</strong>
+        <span>Preparando</span>
+      </article>
+
+      <article>
+        <strong id="readyCount">0</strong>
+        <span>Listos</span>
+      </article>
+    </section>
+
+    <nav
+      class="tabs"
+      aria-label="Estados de preparación"
+    >
+      <button
+        class="tab active"
+        data-filter="Todos"
+        type="button"
+      >
+        Todos
+      </button>
+      <button
+        class="tab"
+        data-filter="Pendiente"
+        type="button"
+      >
+        Pendientes
+      </button>
+      <button
+        class="tab"
+        data-filter="Preparando"
+        type="button"
+      >
+        Preparando
+      </button>
+      <button
+        class="tab"
+        data-filter="Listo"
+        type="button"
+      >
+        Listos
+      </button>
+    </nav>
+
+    <section
+      class="orders-grid"
+      id="ordersGrid"
+    >
+      <div class="empty-state">
+        Cargando pedidos…
+      </div>
+    </section>
+  </div>
+
+  <script src="./cocina.js?v=cambios-detallados-v1"></script>
+</body>
+</html>
