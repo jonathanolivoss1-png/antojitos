@@ -1,3 +1,4 @@
+// KITCHEN_APP_IDEMPOTENCY_SECURITY_V1
 require('dotenv').config();
 
 console.log('=== DIAGNÓSTICO DE RENDER ===');
@@ -23,11 +24,38 @@ const meserosRoutes = require('./routes/meseros');
 const personalCorrectionsRoutes = require('./routes/correcciones-personal');
 const kitchenChangesRoutes = require('./routes/cambios-cocina');
 
+const { createOrderIdempotency } = require('./middleware/idempotencia-pedidos');
+const { router: cocinaRoutes } = require('./routes/cocina');
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
+// KITCHEN_SECURITY_HEADERS_V1
+app.use((req, res, next) => {
+  res.setHeader(
+    'X-Content-Type-Options',
+    'nosniff'
+  );
+  res.setHeader(
+    'X-Frame-Options',
+    'SAMEORIGIN'
+  );
+  res.setHeader(
+    'Referrer-Policy',
+    'same-origin'
+  );
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=()'
+  );
+  next();
+});
+
+
 
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
@@ -67,6 +95,27 @@ if (pgPool) {
 }
 
 app.use(session(sessionOptions));
+// ORDER_IDEMPOTENCY_V1
+const publicOrderIdempotency =
+  createOrderIdempotency({
+    scope: 'public-orders',
+    principal: req =>
+      req.body?.clienteToken ||
+      req.body?.clientToken ||
+      req.ip ||
+      'public'
+  });
+
+const personalOrderIdempotency =
+  createOrderIdempotency({
+    scope: 'personal-orders',
+    principal: req =>
+      req.session?.mesero?.id ||
+      req.ip ||
+      'personal'
+  });
+
+
 
 app.get('/test-postgres', async (req, res) => {
   if (!pgPool) {
@@ -103,11 +152,15 @@ app.get('/test-postgres', async (req, res) => {
 });
 
 app.use('/api', authRoutes);
+app.use('/api/pedidos', publicOrderIdempotency);
 app.use('/api/pedidos', pedidosRoutes);
 app.use('/api/admin', businessProtectionRoutes);
 app.use('/api/admin', kitchenChangesRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/meseros/orders', personalOrderIdempotency);
 app.use('/api/meseros', meserosRoutes);
+app.use('/api/cocina', cocinaRoutes);
+
 app.use('/api/meseros', personalCorrectionsRoutes);
 
 app.use(express.static(path.join(__dirname, 'public')));

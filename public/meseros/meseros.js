@@ -809,7 +809,23 @@
     try {
       const correction = Boolean(editingOrder);
       const endpoint = correction ? `/api/meseros/orders/${editingOrder.id}/correction` : '/api/meseros/orders';
+      // PERSONAL_ORDER_REQUEST_ID_V1
+      const requestId =
+        correction
+          ? null
+          : (
+              window.crypto &&
+              typeof window.crypto.randomUUID === 'function'
+                ? window.crypto.randomUUID()
+                : [
+                    'personal',
+                    Date.now(),
+                    Math.random().toString(36).slice(2)
+                  ].join('-')
+            );
+
       const body = {
+        requestId,
         tipoEntrega: deliveryType,
         items: cart.map(item => ({
           kind: item.kind,

@@ -1,0 +1,110 @@
+/* KITCHEN_ADMIN_ACCESS_V1 */
+
+#kitchenAccessSection {
+  margin-top: 1rem;
+}
+
+.kitchen-admin-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.kitchen-admin-form {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.kitchen-admin-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+}
+
+.kitchen-admin-form input {
+  width: 100%;
+  min-height: 44px;
+}
+
+.kitchen-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.kitchen-user-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.kitchen-user-card {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.85rem;
+  border: 1px solid
+    rgba(78, 52, 46, 0.14);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.kitchen-user-card p {
+  margin: 0.2rem 0 0;
+  color: #75625d;
+}
+
+.kitchen-user-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.kitchen-user-controls button {
+  min-height: 38px;
+}
+
+.kitchen-user-status {
+  display: inline-flex;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.kitchen-user-status.active {
+  background: #dff2df;
+  color: #236628;
+}
+
+.kitchen-user-status.inactive {
+  background: #f5dddd;
+  color: #8b2626;
+}
+
+.kitchen-admin-message {
+  min-height: 1.2rem;
+  margin: 0;
+  color: #6d4c41;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .kitchen-admin-form {
+    grid-template-columns: 1fr;
+  }
+
+  .kitchen-user-card {
+    grid-template-columns: 1fr;
+  }
+
+  .kitchen-user-controls {
+    justify-content: flex-start;
+  }
+}

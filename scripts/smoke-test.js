@@ -16,6 +16,13 @@ const files = [
   'routes/correcciones-personal.js',
   'routes/cambios-cocina.js',
   'public/admin/cambios-cocina.js',
+  'middleware/idempotencia-pedidos.js',
+  'routes/cocina.js',
+  'public/cocina/cocina.js',
+  'public/cocina/sw.js',
+  'public/admin/cocina-admin.js',
+  'public/admin/cocina-estados.js',
+  'scripts/security-contract-test.js',
 ].filter(file => fs.existsSync(file));
 
 let failed = false;

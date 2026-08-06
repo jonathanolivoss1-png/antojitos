@@ -3255,11 +3255,29 @@
       localStorage.setItem(STORAGE_KEYS.orderRefresh, `${Date.now()}`);
     }
 
+    // PUBLIC_ORDER_REQUEST_ID_V1
+    function createOrderRequestId() {
+      if (
+        window.crypto &&
+        typeof window.crypto.randomUUID === 'function'
+      ) {
+        return window.crypto.randomUUID();
+      }
+
+      return [
+        'web',
+        Date.now(),
+        Math.random().toString(36).slice(2)
+      ].join('-');
+    }
+
     async function postOrderPayload(payload) {
       const response = await fetch('/api/pedidos', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Idempotency-Key':
+            payload.requestId || ''
         },
         body: JSON.stringify(payload)
       });
@@ -3273,10 +3291,12 @@
     }
 
     async function createOrderInApi(orderData) {
+      const requestId = createOrderRequestId();
       const safeItems = normalizeOrderItems(orderData.items);
       const safeDeliveryType = String(orderData.tipoEntrega || orderData.deliveryType || 'Recoger en establecimiento').trim() || 'Recoger en establecimiento';
 
       const payload = {
+        requestId,
         clienteToken: clientToken,
         clientToken,
         cliente: String(orderData.cliente || '').trim(),
@@ -3301,6 +3321,7 @@
       } catch {
         // Retry with a minimal payload shape as fallback for inconsistent client state.
         return postOrderPayload({
+          requestId: payload.requestId,
           cliente: payload.cliente,
           tipoEntrega: payload.tipoEntrega,
           productos: payload.productos,

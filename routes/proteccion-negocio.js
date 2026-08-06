@@ -24,9 +24,13 @@ const BACKUP_TABLES = [
   'calculadora_productos',
   'pedidos_correcciones',
   'pedidos_cocina_estado',
+  'cocina_usuarios',
+  'pedidos_preparacion',
 ];
 const OPTIONAL_BACKUP_TABLES = new Set([
-  'pedidos_cocina_estado'
+  'pedidos_cocina_estado',
+  'cocina_usuarios',
+  'pedidos_preparacion',
 ]);
 
 const DELETE_ORDER = [
@@ -38,7 +42,9 @@ const DELETE_ORDER = [
   'pedidos',
   'meseros_usuarios',
   'configuracion',
-  'usuarios'
+  'usuarios',
+  'pedidos_preparacion',
+  'cocina_usuarios',
 ];
 
 const INSERT_ORDER = [
@@ -51,6 +57,8 @@ const INSERT_ORDER = [
   'calculadora_productos',
   'pedidos_correcciones',
   'pedidos_cocina_estado',
+  'cocina_usuarios',
+  'pedidos_preparacion',
 ];
 
 function sanitizeText(value, maxLength = 240) {
