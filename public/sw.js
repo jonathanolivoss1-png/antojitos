@@ -1,4 +1,4 @@
-const CACHE_NAME = 'antojitos-shell-v1';
+const CACHE_NAME = 'antojitos-shell-install-menu-v2';
 
 const APP_SHELL = [
   '/',

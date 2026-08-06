@@ -1850,7 +1850,41 @@
         font-size: 0.64rem;
       }
     }
-  </style>
+  
+    /* MOBILE_INSTALL_IN_HAMBURGER_V1 */
+    .mobile-menu .mobile-install-app {
+      width: 100%;
+      display: block;
+      padding: 0.9rem 1.2rem;
+      border: 0;
+      border-bottom: 1px solid #f0f0f0;
+      background: #fff;
+      color: var(--cafe);
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 800;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .mobile-menu .mobile-install-app:hover,
+    .mobile-menu .mobile-install-app:focus-visible {
+      background: #f8f8f8;
+      color: var(--rojo);
+      outline: none;
+    }
+
+    .mobile-menu .mobile-install-app.hidden {
+      display: none !important;
+    }
+
+    @media (min-width: 769px) {
+      .mobile-menu .mobile-install-app {
+        display: none !important;
+      }
+    }
+
+</style>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 </head>
@@ -1890,7 +1924,17 @@
         <a href="#nosotros" onclick="toggleMenu()">🌶️ Nosotros</a>
         <a href="#ubicacion" onclick="toggleMenu()">📍 Ubicación</a>
         <a href="https://wa.me/527775640868?text=Hola,%20quiero%20hacer%20un%20pedido" target="_blank" onclick="toggleMenu()">💬 Pedir por WhatsApp</a>
-      </div>
+      
+        <!-- MOBILE_INSTALL_IN_HAMBURGER_V1 -->
+        <button
+          class="mobile-install-app hidden"
+          id="mobileInstallAppBtn"
+          type="button"
+          aria-label="Instalar Antojitos Los Anafres"
+        >
+          📲 Instalar aplicación
+        </button>
+</div>
     </nav>
   </header>
 
@@ -3900,6 +3944,6 @@
     initMobileNav();
     notifyPreparedOrders();
   </script>
-  <script src="/pwa.js" defer></script>
+  <script src="/pwa.js?v=install-menu-v2" defer></script>
 </body>
 </html>
