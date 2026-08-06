@@ -878,6 +878,135 @@
       }
     }
 
+
+    /* WAITER_PANEL_ADMIN_V1 */
+    .waiter-admin-section {
+      margin-top: 1rem;
+    }
+
+    .waiter-admin-section .product-top {
+      align-items: flex-start;
+    }
+
+    .waiter-admin-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .6rem;
+      justify-content: flex-end;
+    }
+
+    .waiter-admin-content[hidden] {
+      display: none !important;
+    }
+
+    .waiter-admin-content {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .waiter-create-grid,
+    .waiter-user-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .8rem;
+    }
+
+    .waiter-create-grid label,
+    .waiter-user-grid label {
+      display: grid;
+      gap: .4rem;
+      font-size: .78rem;
+      font-weight: 900;
+      color: #6d4c41;
+    }
+
+    .waiter-user-list {
+      display: grid;
+      gap: .8rem;
+    }
+
+    .waiter-user-card {
+      padding: 1rem;
+      border-radius: 18px;
+      border: 1px solid rgba(78,52,46,.12);
+      background: #fffaf4;
+      display: grid;
+      gap: .8rem;
+    }
+
+    .waiter-user-actions {
+      display: flex;
+      gap: .6rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .waiter-active-label {
+      display: flex !important;
+      align-items: center;
+      gap: .55rem !important;
+      align-self: end;
+      min-height: 48px;
+      padding: .7rem .8rem;
+      border-radius: 14px;
+      background: rgba(46,125,50,.08);
+    }
+
+    .waiter-active-label input {
+      width: 20px;
+      height: 20px;
+      margin: 0;
+    }
+
+    .waiter-empty {
+      padding: 1rem;
+      border-radius: 16px;
+      border: 1px dashed rgba(78,52,46,.2);
+      color: #7b665f;
+      text-align: center;
+      background: rgba(255,255,255,.7);
+    }
+
+    .waiter-qr-panel {
+      padding: 1rem;
+      border-radius: 18px;
+      background: white;
+      border: 1px solid rgba(78,52,46,.12);
+      text-align: center;
+      display: grid;
+      justify-items: center;
+      gap: .8rem;
+    }
+
+    .waiter-qr-panel[hidden] {
+      display: none !important;
+    }
+
+    .waiter-qr-panel img {
+      width: min(280px, 100%);
+      border-radius: 14px;
+      background: white;
+      padding: .5rem;
+    }
+
+    @media (max-width: 800px) {
+      .waiter-create-grid,
+      .waiter-user-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .waiter-admin-tools,
+      .waiter-user-actions {
+        justify-content: stretch;
+      }
+
+      .waiter-admin-tools > *,
+      .waiter-user-actions > * {
+        width: 100%;
+      }
+    }
+
 </style>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
@@ -951,6 +1080,8 @@
         </div>
 
         <a class="ghost-btn" href="../index.html">Ver sitio</a>
+        <!-- WAITER_TOPBAR_ACCESS_V1 -->
+        <a class="ghost-btn" href="/meseros/" target="_blank" rel="noopener">Abrir panel de meseros</a>
         <button class="btn" id="logoutBtn" type="button">Cerrar sesión</button>
       </div>
     </section>
@@ -1084,7 +1215,72 @@
       </div>
     </section>
 
-    <section class="panel">
+    
+    <!-- WAITER_PANEL_ADMIN_V1 -->
+    <section class="panel waiter-admin-section" id="waiterAccessSection">
+      <div class="product-top">
+        <div>
+          <h2>Acceso de meseros</h2>
+          <p class="panel-copy">
+            Crea usuarios con PIN para tomar órdenes desde teléfonos. Los meseros no tienen acceso al Dashboard, ganancias ni configuración.
+          </p>
+        </div>
+
+        <div class="waiter-admin-tools">
+          <a class="ghost-btn" href="/meseros/" target="_blank" rel="noopener">Abrir panel de meseros</a>
+          <button class="ghost-btn" id="copyWaiterLinkBtn" type="button">Copiar enlace</button>
+          <button class="ghost-btn" id="showWaiterQrBtn" type="button">Mostrar QR</button>
+          <button
+            class="btn"
+            id="toggleWaiterAccessBtn"
+            type="button"
+            aria-expanded="false"
+            aria-controls="waiterAccessContent"
+          >
+            <span data-role="waiter-toggle-label">Mostrar accesos</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="waiter-admin-content" id="waiterAccessContent" hidden>
+        <form id="createWaiterForm">
+          <div class="waiter-create-grid">
+            <label>
+              Nombre del mesero
+              <input id="waiterNameInput" type="text" maxlength="120" required />
+            </label>
+
+            <label>
+              Usuario
+              <input id="waiterUserInputAdmin" type="text" maxlength="60" autocomplete="off" required />
+            </label>
+
+            <label>
+              PIN de 4 a 12 números
+              <input id="waiterPinInputAdmin" type="password" inputmode="numeric" pattern="[0-9]{4,12}" autocomplete="new-password" required />
+            </label>
+          </div>
+
+          <div class="footer-actions" style="margin-top:.8rem;">
+            <button class="save-btn" type="submit">Crear acceso</button>
+            <button class="ghost-btn" id="refreshWaitersBtn" type="button">Actualizar lista</button>
+          </div>
+        </form>
+
+        <div class="waiter-qr-panel" id="waiterQrPanel" hidden>
+          <h3>Código QR del personal</h3>
+          <p class="panel-copy">Escanéalo para abrir <strong>/meseros/</strong>.</p>
+          <img id="waiterQrImage" alt="Código QR para el panel de meseros" />
+          <button class="ghost-btn" id="printWaiterQrBtn" type="button">Imprimir QR</button>
+        </div>
+
+        <div class="waiter-user-list" id="waiterUsersList">
+          <div class="waiter-empty">Abre esta sección para cargar los accesos.</div>
+        </div>
+      </div>
+    </section>
+
+<section class="panel">
       <div class="product-top">
         <div>
           <h2>Dashboard profesional</h2>
@@ -1634,5 +1830,6 @@
     })();
   </script>
 
+  <script src="meseros-admin.js?v=1"></script>
 </body>
 </html>

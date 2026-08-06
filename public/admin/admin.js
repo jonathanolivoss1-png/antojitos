@@ -1220,7 +1220,10 @@
 
   function mapProducts(items) {
     if (!Array.isArray(items) || !items.length) return 'Sin productos';
-    return items.map(item => `${Number(item.qty || 1)}x ${item.name || 'Producto'}`).join(' | ');
+    return items.map(item => {
+      const detail = String(item.choice || '').trim();
+      return `${Number(item.qty || 1)}x ${item.name || 'Producto'}${detail ? ` (${detail})` : ''}`;
+    }).join(' | ');
   }
 
   function renderStats(stats) {

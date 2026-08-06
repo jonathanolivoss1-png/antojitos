@@ -19,6 +19,16 @@ const CONTENT_KEY = 'site_content_v1';
 const CALCULATOR_DRAFT_KEY = 'calculator_draft_v1';
 const CALCULATOR_HISTORY_KEY = 'calculator_history_v1';
 const SOLD_PRODUCTS_SEPARATED_KEY = 'sold_products_separated_v1';
+
+const CASH_CLOSINGS_KEY = 'cash_closings_v1';
+const ADMIN_BACKUP_VERSION = 1;
+const ADMIN_BACKUP_TABLES = [
+  'configuracion',
+  'pedidos',
+  'pedidos_archivados',
+  'calculadora_calculos',
+  'calculadora_productos'
+];
 const MEXICO_CITY_TZ_OFFSET_MINUTES = 360;
 
 function parseProductos(raw) {
@@ -161,6 +171,1031 @@ async function writeConfigJson(key, value) {
   `, [key, payload]);
 }
 
+
+// === ADMIN_BUSINESS_TOOLS_BACKEND_V1 ===
+function normalizeCashClosingRecord(value) {
+  const source =
+    value &&
+    typeof value === 'object'
+      ? value
+      : {};
+
+  return {
+    expenses: roundMoney(
+      Math.max(
+        0,
+        sanitizeNumber(
+          source.expenses || 0
+        )
+      )
+    ),
+
+    countedCash: roundMoney(
+      Math.max(
+        0,
+        sanitizeNumber(
+          source.countedCash || 0
+        )
+      )
+    ),
+
+    notes: sanitizeText(
+      source.notes || '',
+      1200
+    ),
+
+    updatedAt:
+      source.updatedAt
+        ? new Date(
+            source.updatedAt
+          ).toISOString()
+        : null
+  };
+}
+
+async function readCashClosings() {
+  const parsed =
+    await readConfigJson(
+      CASH_CLOSINGS_KEY
+    );
+
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed)
+  ) {
+    return {};
+  }
+
+  return parsed;
+}
+
+async function getOrdersForCashClosing(dateKey) {
+  const range =
+    buildUtcRangeFromDateKey(
+      dateKey,
+      MEXICO_CITY_TZ_OFFSET_MINUTES
+    );
+
+  const [
+    activeRows,
+    archivedRows
+  ] = await Promise.all([
+    queryAll(
+      `
+        SELECT
+          id,
+          cliente,
+          tipo_entrega,
+          productos,
+          subtotal,
+          envio,
+          total,
+          estado,
+          fecha
+        FROM pedidos
+        WHERE fecha >= ?
+          AND fecha < ?
+        ORDER BY fecha DESC, id DESC
+      `,
+      [
+        range.startIso,
+        range.endIso
+      ]
+    ),
+
+    queryAll(
+      `
+        SELECT
+          id,
+          cliente,
+          tipo_entrega,
+          productos,
+          subtotal,
+          envio,
+          total,
+          estado,
+          fecha
+        FROM pedidos_archivados
+        WHERE fecha = ?
+        ORDER BY id DESC
+      `,
+      [dateKey]
+    )
+  ]);
+
+  return [
+    ...activeRows,
+    ...archivedRows
+  ];
+}
+
+function summarizeCashClosing(
+  rows,
+  closing
+) {
+  const productTotals =
+    new Map();
+
+  let grossSales = 0;
+  let deliveredSales = 0;
+  let shippingFees = 0;
+  let validOrders = 0;
+  let cancelledOrders = 0;
+  let cancelledSales = 0;
+  let deliveryOrders = 0;
+  let pickupOrders = 0;
+
+  rows.forEach(row => {
+    const status =
+      sanitizeText(
+        row?.estado || '',
+        60
+      );
+
+    const total =
+      roundMoney(
+        Number(
+          row?.total || 0
+        )
+      );
+
+    const isCancelled =
+      status.toLowerCase() ===
+      'cancelado';
+
+    if (isCancelled) {
+      cancelledOrders += 1;
+      cancelledSales =
+        roundMoney(
+          cancelledSales +
+          total
+        );
+      return;
+    }
+
+    validOrders += 1;
+    grossSales =
+      roundMoney(
+        grossSales +
+        total
+      );
+
+    shippingFees =
+      roundMoney(
+        shippingFees +
+        Number(
+          row?.envio || 0
+        )
+      );
+
+    if (
+      status.toLowerCase() ===
+      'entregado'
+    ) {
+      deliveredSales =
+        roundMoney(
+          deliveredSales +
+          total
+        );
+    }
+
+    const delivery =
+      sanitizeText(
+        row?.tipo_entrega || '',
+        80
+      )
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(
+          /[\u0300-\u036f]/g,
+          ''
+        );
+
+    if (
+      delivery.includes('domicilio') ||
+      delivery.includes('envio')
+    ) {
+      deliveryOrders += 1;
+    } else {
+      pickupOrders += 1;
+    }
+
+    parseProductos(
+      row?.productos
+    ).forEach(item => {
+      const name =
+        sanitizeText(
+          item?.name ||
+          item?.nombre ||
+          'Producto',
+          140
+        );
+
+      const quantity =
+        Math.max(
+          0,
+          Number(
+            item?.qty ??
+            item?.cantidad ??
+            1
+          )
+        );
+
+      if (
+        !name ||
+        quantity <= 0
+      ) {
+        return;
+      }
+
+      const key =
+        name
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(
+            /[\u0300-\u036f]/g,
+            ''
+          )
+          .trim();
+
+      const current =
+        productTotals.get(key) || {
+          name,
+          quantity: 0
+        };
+
+      current.quantity +=
+        quantity;
+
+      productTotals.set(
+        key,
+        current
+      );
+    });
+  });
+
+  const topProduct =
+    Array.from(
+      productTotals.values()
+    )
+      .sort(
+        (a, b) =>
+          b.quantity -
+          a.quantity
+      )[0] ||
+    null;
+
+  const expenses =
+    roundMoney(
+      closing.expenses || 0
+    );
+
+  const countedCash =
+    roundMoney(
+      closing.countedCash || 0
+    );
+
+  const netAfterExpenses =
+    roundMoney(
+      grossSales -
+      expenses
+    );
+
+  return {
+    totalOrders:
+      rows.length,
+
+    validOrders,
+    cancelledOrders,
+    cancelledSales,
+
+    grossSales,
+    deliveredSales,
+
+    pendingSales:
+      roundMoney(
+        grossSales -
+        deliveredSales
+      ),
+
+    shippingFees,
+
+    averageTicket:
+      validOrders
+        ? roundMoney(
+            grossSales /
+            validOrders
+          )
+        : 0,
+
+    deliveryOrders,
+    pickupOrders,
+
+    topProduct:
+      topProduct
+        ? `${topProduct.name} (${topProduct.quantity})`
+        : 'Sin datos',
+
+    expenses,
+    countedCash,
+    netAfterExpenses,
+
+    cashDifference:
+      roundMoney(
+        countedCash -
+        grossSales
+      )
+  };
+}
+
+async function buildCashClosingResponse(dateKey) {
+  const [
+    rows,
+    closings
+  ] = await Promise.all([
+    getOrdersForCashClosing(
+      dateKey
+    ),
+    readCashClosings()
+  ]);
+
+  const closing =
+    normalizeCashClosingRecord(
+      closings[dateKey] || {}
+    );
+
+  return {
+    ok: true,
+    date: dateKey,
+    timezone:
+      'America/Mexico_City',
+    closing,
+    summary:
+      summarizeCashClosing(
+        rows,
+        closing
+      )
+  };
+}
+
+function quoteAdminIdentifier(value) {
+  const identifier =
+    String(value || '');
+
+  if (
+    !/^[a-z_][a-z0-9_]*$/i.test(
+      identifier
+    )
+  ) {
+    throw new Error(
+      'Identificador SQL inválido'
+    );
+  }
+
+  return `"${identifier}"`;
+}
+
+async function postgresTableExists(
+  client,
+  tableName
+) {
+  const result =
+    await client.query(
+      `
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = $1
+        LIMIT 1
+      `,
+      [tableName]
+    );
+
+  return Boolean(
+    result.rows[0]
+  );
+}
+
+async function postgresTableColumns(
+  client,
+  tableName
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          column_name,
+          data_type,
+          udt_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = $1
+        ORDER BY ordinal_position
+      `,
+      [tableName]
+    );
+
+  return result.rows.map(row => ({
+    name:
+      row.column_name,
+    type:
+      row.data_type,
+    udtName:
+      row.udt_name
+  }));
+}
+
+function sqliteTableExists(
+  tableName
+) {
+  return Boolean(
+    db.prepare(
+      `
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = ?
+        LIMIT 1
+      `
+    ).get(tableName)
+  );
+}
+
+function sqliteTableColumns(
+  tableName
+) {
+  return db
+    .prepare(
+      `PRAGMA table_info(${quoteAdminIdentifier(tableName)})`
+    )
+    .all()
+    .map(row => ({
+      name:
+        row.name,
+      type:
+        row.type || ''
+    }));
+}
+
+async function exportBackupTable(
+  tableName
+) {
+  if (
+    !ADMIN_BACKUP_TABLES.includes(
+      tableName
+    )
+  ) {
+    throw new Error(
+      'Tabla no permitida en respaldo'
+    );
+  }
+
+  const quoted =
+    quoteAdminIdentifier(
+      tableName
+    );
+
+  if (usePostgres) {
+    if (
+      !await postgresTableExists(
+        pgPool,
+        tableName
+      )
+    ) {
+      return [];
+    }
+
+    const result =
+      await pgPool.query(
+        `SELECT * FROM ${quoted}`
+      );
+
+    return result.rows;
+  }
+
+  if (
+    !sqliteTableExists(
+      tableName
+    )
+  ) {
+    return [];
+  }
+
+  return db
+    .prepare(
+      `SELECT * FROM ${quoted}`
+    )
+    .all();
+}
+
+async function createAdminBackupPayload() {
+  const tables = {};
+
+  for (
+    const tableName
+    of ADMIN_BACKUP_TABLES
+  ) {
+    tables[tableName] =
+      await exportBackupTable(
+        tableName
+      );
+  }
+
+  return {
+    format:
+      'antojitos-admin-backup',
+
+    version:
+      ADMIN_BACKUP_VERSION,
+
+    exportedAt:
+      new Date().toISOString(),
+
+    source:
+      usePostgres
+        ? 'postgresql'
+        : 'sqlite',
+
+    data: {
+      tables
+    }
+  };
+}
+
+function normalizeBackupValue(
+  value,
+  column
+) {
+  if (
+    value === undefined
+  ) {
+    return null;
+  }
+
+  if (
+    value !== null &&
+    typeof value === 'object'
+  ) {
+    return JSON.stringify(
+      value
+    );
+  }
+
+  return value;
+}
+
+async function restorePostgresTable(
+  client,
+  tableName,
+  rows
+) {
+  if (
+    !await postgresTableExists(
+      client,
+      tableName
+    )
+  ) {
+    return 0;
+  }
+
+  const quoted =
+    quoteAdminIdentifier(
+      tableName
+    );
+
+  const columns =
+    await postgresTableColumns(
+      client,
+      tableName
+    );
+
+  const columnMap =
+    new Map(
+      columns.map(column => [
+        column.name,
+        column
+      ])
+    );
+
+  let restored = 0;
+
+  for (const row of rows) {
+    if (
+      !row ||
+      typeof row !== 'object' ||
+      Array.isArray(row)
+    ) {
+      continue;
+    }
+
+    const keys =
+      Object.keys(row).filter(
+        key =>
+          columnMap.has(key)
+      );
+
+    if (!keys.length) {
+      continue;
+    }
+
+    const values =
+      keys.map(key =>
+        normalizeBackupValue(
+          row[key],
+          columnMap.get(key)
+        )
+      );
+
+    const placeholders =
+      keys.map((key, index) => {
+        const column =
+          columnMap.get(key);
+
+        const placeholder =
+          `$${index + 1}`;
+
+        if (
+          column.type === 'jsonb' ||
+          column.udtName === 'jsonb'
+        ) {
+          return `${placeholder}::jsonb`;
+        }
+
+        if (
+          column.type === 'json' ||
+          column.udtName === 'json'
+        ) {
+          return `${placeholder}::json`;
+        }
+
+        return placeholder;
+      });
+
+    await client.query(
+      `
+        INSERT INTO ${quoted} (
+          ${keys.map(
+            quoteAdminIdentifier
+          ).join(', ')}
+        )
+        VALUES (
+          ${placeholders.join(', ')}
+        )
+      `,
+      values
+    );
+
+    restored += 1;
+  }
+
+  if (
+    columnMap.has('id')
+  ) {
+    const sequenceResult =
+      await client.query(
+        `
+          SELECT
+            pg_get_serial_sequence(
+              $1,
+              'id'
+            ) AS sequence_name
+        `,
+        [tableName]
+      );
+
+    const sequenceName =
+      sequenceResult.rows[0]
+        ?.sequence_name;
+
+    if (sequenceName) {
+      const maxResult =
+        await client.query(
+          `
+            SELECT
+              MAX(id) AS max_id,
+              COUNT(*) AS row_count
+            FROM ${quoted}
+          `
+        );
+
+      const maxId =
+        Number(
+          maxResult.rows[0]
+            ?.max_id ||
+          1
+        );
+
+      const hasRows =
+        Number(
+          maxResult.rows[0]
+            ?.row_count ||
+          0
+        ) > 0;
+
+      await client.query(
+        `
+          SELECT setval(
+            $1::regclass,
+            $2,
+            $3
+          )
+        `,
+        [
+          sequenceName,
+          Math.max(1, maxId),
+          hasRows
+        ]
+      );
+    }
+  }
+
+  return restored;
+}
+
+function restoreSqliteTable(
+  tableName,
+  rows
+) {
+  if (
+    !sqliteTableExists(
+      tableName
+    )
+  ) {
+    return 0;
+  }
+
+  const quoted =
+    quoteAdminIdentifier(
+      tableName
+    );
+
+  const columns =
+    sqliteTableColumns(
+      tableName
+    );
+
+  const allowed =
+    new Set(
+      columns.map(
+        column =>
+          column.name
+      )
+    );
+
+  let restored = 0;
+
+  for (const row of rows) {
+    if (
+      !row ||
+      typeof row !== 'object' ||
+      Array.isArray(row)
+    ) {
+      continue;
+    }
+
+    const keys =
+      Object.keys(row).filter(
+        key =>
+          allowed.has(key)
+      );
+
+    if (!keys.length) {
+      continue;
+    }
+
+    const values =
+      keys.map(key => {
+        const value =
+          row[key];
+
+        if (
+          value !== null &&
+          typeof value === 'object'
+        ) {
+          return JSON.stringify(
+            value
+          );
+        }
+
+        return value;
+      });
+
+    db.prepare(
+      `
+        INSERT INTO ${quoted} (
+          ${keys.map(
+            quoteAdminIdentifier
+          ).join(', ')}
+        )
+        VALUES (
+          ${keys.map(() => '?').join(', ')}
+        )
+      `
+    ).run(...values);
+
+    restored += 1;
+  }
+
+  if (
+    allowed.has('id')
+  ) {
+    const maxRow =
+      db.prepare(
+        `
+          SELECT
+            MAX(id) AS max_id
+          FROM ${quoted}
+        `
+      ).get();
+
+    const maxId =
+      Number(
+        maxRow?.max_id ||
+        0
+      );
+
+    if (
+      sqliteTableExists(
+        'sqlite_sequence'
+      )
+    ) {
+      db.prepare(
+        `
+          DELETE FROM sqlite_sequence
+          WHERE name = ?
+        `
+      ).run(tableName);
+
+      if (maxId > 0) {
+        db.prepare(
+          `
+            INSERT INTO sqlite_sequence (
+              name,
+              seq
+            )
+            VALUES (?, ?)
+          `
+        ).run(
+          tableName,
+          maxId
+        );
+      }
+    }
+  }
+
+  return restored;
+}
+
+function validateBackupPayload(
+  backup
+) {
+  if (
+    !backup ||
+    backup.format !==
+      'antojitos-admin-backup' ||
+    !backup.data ||
+    typeof backup.data !==
+      'object' ||
+    !backup.data.tables ||
+    typeof backup.data.tables !==
+      'object'
+  ) {
+    throw new Error(
+      'El archivo no es un respaldo válido de Antojitos'
+    );
+  }
+
+  const tables = {};
+
+  ADMIN_BACKUP_TABLES.forEach(
+    tableName => {
+      const rows =
+        backup.data.tables[
+          tableName
+        ];
+
+      tables[tableName] =
+        Array.isArray(rows)
+          ? rows.slice(
+              0,
+              100000
+            )
+          : [];
+    }
+  );
+
+  return tables;
+}
+
+async function restoreAdminBackupPayload(
+  backup
+) {
+  const tables =
+    validateBackupPayload(
+      backup
+    );
+
+  const deleteOrder = [
+    'calculadora_productos',
+    'calculadora_calculos',
+    'pedidos_archivados',
+    'pedidos',
+    'configuracion'
+  ];
+
+  const insertOrder = [
+    'configuracion',
+    'pedidos',
+    'pedidos_archivados',
+    'calculadora_calculos',
+    'calculadora_productos'
+  ];
+
+  let restoredRows = 0;
+
+  if (usePostgres) {
+    const client =
+      await pgPool.connect();
+
+    try {
+      await client.query(
+        'BEGIN'
+      );
+
+      for (
+        const tableName
+        of deleteOrder
+      ) {
+        if (
+          await postgresTableExists(
+            client,
+            tableName
+          )
+        ) {
+          await client.query(
+            `DELETE FROM ${quoteAdminIdentifier(tableName)}`
+          );
+        }
+      }
+
+      for (
+        const tableName
+        of insertOrder
+      ) {
+        restoredRows +=
+          await restorePostgresTable(
+            client,
+            tableName,
+            tables[tableName]
+          );
+      }
+
+      await client.query(
+        'COMMIT'
+      );
+    } catch (error) {
+      await client
+        .query('ROLLBACK')
+        .catch(() => {});
+
+      throw error;
+    } finally {
+      client.release();
+    }
+  } else {
+    const transaction =
+      db.transaction(() => {
+        deleteOrder.forEach(
+          tableName => {
+            if (
+              sqliteTableExists(
+                tableName
+              )
+            ) {
+              db.prepare(
+                `DELETE FROM ${quoteAdminIdentifier(tableName)}`
+              ).run();
+            }
+          }
+        );
+
+        insertOrder.forEach(
+          tableName => {
+            restoredRows +=
+              restoreSqliteTable(
+                tableName,
+                tables[tableName]
+              );
+          }
+        );
+      });
+
+    transaction();
+  }
+
+  return restoredRows;
+}
 function normalizePromotions(value) {
   if (!Array.isArray(value)) return [];
 
@@ -772,6 +1807,206 @@ router.delete('/calculadora/:id', requireAuth, async (req, res) => {
   }
 });
 
+
+// === ADMIN_BUSINESS_TOOLS_ROUTES_V1 ===
+router.get('/cash-closing', requireAuth, async (req, res) => {
+  try {
+    await maybeArchiveAndResetDailyOrders();
+
+    const requestedDate =
+      sanitizeText(
+        req.query?.date || '',
+        10
+      );
+
+    const date =
+      isValidDateKey(
+        requestedDate
+      )
+        ? requestedDate
+        : getMexicoCityDateKey();
+
+    return res.json(
+      await buildCashClosingResponse(
+        date
+      )
+    );
+  } catch (error) {
+    console.error(
+      'Error cargando corte de caja:',
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message:
+        'No se pudo cargar el corte de caja'
+    });
+  }
+});
+
+router.put('/cash-closing', requireAuth, async (req, res) => {
+  try {
+    const date =
+      sanitizeText(
+        req.body?.date || '',
+        10
+      );
+
+    if (
+      !isValidDateKey(date)
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          'Fecha inválida para el corte de caja'
+      });
+    }
+
+    const closings =
+      await readCashClosings();
+
+    closings[date] =
+      normalizeCashClosingRecord({
+        expenses:
+          req.body?.expenses,
+
+        countedCash:
+          req.body?.countedCash,
+
+        notes:
+          req.body?.notes,
+
+        updatedAt:
+          new Date().toISOString()
+      });
+
+    await writeConfigJson(
+      CASH_CLOSINGS_KEY,
+      closings
+    );
+
+    broadcastAdminEvent(
+      'cash-closing-updated',
+      {
+        ts:
+          Date.now(),
+        date
+      }
+    );
+
+    return res.json(
+      await buildCashClosingResponse(
+        date
+      )
+    );
+  } catch (error) {
+    console.error(
+      'Error guardando corte de caja:',
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message:
+        'No se pudo guardar el corte de caja'
+    });
+  }
+});
+
+router.get('/backup', requireAuth, async (req, res) => {
+  try {
+    const backup =
+      await createAdminBackupPayload();
+
+    const date =
+      getMexicoCityDateKey();
+
+    res.setHeader(
+      'Content-Type',
+      'application/json; charset=utf-8'
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="respaldo-antojitos-${date}.json"`
+    );
+
+    return res.send(
+      JSON.stringify(
+        backup,
+        null,
+        2
+      )
+    );
+  } catch (error) {
+    console.error(
+      'Error creando respaldo:',
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message:
+        'No se pudo crear el respaldo administrativo'
+    });
+  }
+});
+
+router.post('/backup/restore', requireAuth, async (req, res) => {
+  try {
+    if (
+      req.body?.confirmation !==
+      'RESTAURAR'
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          'Confirmación de restauración incorrecta'
+      });
+    }
+
+    const restoredRows =
+      await restoreAdminBackupPayload(
+        req.body?.backup
+      );
+
+    broadcastAdminEvent(
+      'orders-updated',
+      {
+        ts:
+          Date.now(),
+        reason:
+          'backup-restored'
+      }
+    );
+
+    broadcastPublicSettingsEvent(
+      'settings-restored',
+      {
+        ts:
+          Date.now()
+      }
+    );
+
+    return res.json({
+      ok: true,
+      restoredRows
+    });
+  } catch (error) {
+    console.error(
+      'Error restaurando respaldo:',
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message:
+        error.message ||
+        'No se pudo restaurar el respaldo administrativo'
+    });
+  }
+});
 router.get('/public-promotions', async (req, res) => {
   try {
     const promotions = await readPromotions();

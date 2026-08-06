@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -1851,6 +1851,8 @@
       }
     }
   </style>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 </head>
 <body id="top">
 
@@ -2035,7 +2037,11 @@
     <p>🌮 Antojitos Los Anafres · Hecho con amor · 2026</p>
     <p style="margin-top: 0.4rem; font-size: 0.8rem;">¡Con el sabor que no se olvida!</p>
     <a class="footer-admin-link" href="admin/index.html">acceso</a>
-  </footer>
+  
+    <!-- WAITER_PUBLIC_ACCESS_V1 -->
+    <span aria-hidden="true"> · </span>
+    <a class="footer-admin-link" href="/meseros/">Acceso del personal</a>
+</footer>
 
   <!-- Floating WhatsApp -->
   <div class="toast" id="cartToast" aria-live="polite"></div>
@@ -3894,5 +3900,6 @@
     initMobileNav();
     notifyPreparedOrders();
   </script>
+  <script src="/pwa.js" defer></script>
 </body>
 </html>

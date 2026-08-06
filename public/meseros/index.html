@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#c73e1d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Meseros Anafres" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <title>Meseros · Antojitos Los Anafres</title>
+  <style>
+    :root {
+      --red: #c73e1d;
+      --red-dark: #9f2f16;
+      --orange: #f9a825;
+      --green: #2e7d32;
+      --cream: #fff8e1;
+      --paper: #fffdf9;
+      --brown: #4e342e;
+      --muted: #7b665f;
+      --line: rgba(78,52,46,.12);
+      --shadow: 0 14px 34px rgba(78,52,46,.12);
+      font-family: Inter, ui-rounded, "SF Pro Rounded", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html {
+      min-height: 100%;
+      background: var(--cream);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--brown);
+      background:
+        radial-gradient(circle at top right, rgba(249,168,37,.18), transparent 28%),
+        linear-gradient(180deg, #fffaf0, #fff3df);
+      padding-bottom: calc(94px + env(safe-area-inset-bottom));
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      touch-action: manipulation;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .shell {
+      width: min(100%, 760px);
+      margin: 0 auto;
+      padding: 12px 12px 24px;
+    }
+
+    .login-screen {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+    }
+
+    .login-card {
+      width: min(100%, 390px);
+      background: rgba(255,255,255,.96);
+      border: 1px solid rgba(199,62,29,.12);
+      border-radius: 28px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      background: linear-gradient(135deg, var(--red), var(--orange));
+      color: white;
+      font-size: 28px;
+      box-shadow: 0 10px 22px rgba(199,62,29,.25);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 1.45rem;
+      line-height: 1.1;
+    }
+
+    .muted {
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: .92rem;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      font-size: .82rem;
+      font-weight: 900;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid rgba(78,52,46,.16);
+      border-radius: 15px;
+      background: white;
+      color: var(--brown);
+      padding: 13px 14px;
+      outline: none;
+      min-height: 48px;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--orange);
+      box-shadow: 0 0 0 4px rgba(249,168,37,.14);
+    }
+
+    .primary,
+    .secondary,
+    .ghost {
+      min-height: 48px;
+      border: 0;
+      border-radius: 15px;
+      padding: 12px 16px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: linear-gradient(135deg, var(--red), var(--red-dark));
+      color: white;
+      box-shadow: 0 10px 20px rgba(199,62,29,.22);
+    }
+
+    .secondary {
+      background: var(--green);
+      color: white;
+    }
+
+    .ghost {
+      background: #f5ece5;
+      color: var(--brown);
+    }
+
+    .error {
+      min-height: 1.15rem;
+      color: #a73319;
+      font-weight: 800;
+      font-size: .84rem;
+    }
+
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding-top: env(safe-area-inset-top);
+      background: rgba(255,248,225,.94);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .header-inner {
+      width: min(100%, 760px);
+      margin: 0 auto;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .header-title .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      font-size: 22px;
+      flex: 0 0 auto;
+    }
+
+    .header-title strong,
+    .header-title small {
+      display: block;
+    }
+
+    .header-title strong {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .header-title small {
+      color: var(--muted);
+      font-size: .72rem;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 7px;
+    }
+
+    .header-actions button {
+      min-width: 42px;
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 13px;
+      background: white;
+      color: var(--brown);
+      box-shadow: 0 6px 16px rgba(78,52,46,.1);
+      font-weight: 900;
+    }
+
+    .order-type {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 22px;
+      background: white;
+      border: 1px solid var(--line);
+      box-shadow: 0 10px 24px rgba(78,52,46,.08);
+      margin-bottom: 12px;
+    }
+
+    .order-type button {
+      min-height: 52px;
+      border: 1px solid transparent;
+      border-radius: 16px;
+      background: #f8f1eb;
+      color: var(--brown);
+      font-weight: 900;
+    }
+
+    .order-type button.active {
+      color: white;
+      background: linear-gradient(135deg, var(--red), var(--orange));
+      box-shadow: 0 8px 18px rgba(199,62,29,.22);
+    }
+
+    .search-wrap {
+      position: sticky;
+      top: calc(63px + env(safe-area-inset-top));
+      z-index: 20;
+      padding: 8px 0 10px;
+      background: linear-gradient(180deg, rgba(255,248,225,.98), rgba(255,248,225,.9), transparent);
+    }
+
+    .search-input {
+      min-height: 48px;
+      padding-left: 44px;
+      background:
+        white
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%237b665f' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
+        no-repeat 15px center;
+      box-shadow: 0 8px 20px rgba(78,52,46,.08);
+    }
+
+    .categories {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 0 12px;
+      scrollbar-width: none;
+    }
+
+    .categories::-webkit-scrollbar {
+      display: none;
+    }
+
+    .category-chip {
+      flex: 0 0 auto;
+      min-height: 40px;
+      padding: 9px 14px;
+      border: 1px solid rgba(78,52,46,.1);
+      border-radius: 999px;
+      background: white;
+      color: var(--brown);
+      font-weight: 900;
+    }
+
+    .category-chip.active {
+      color: white;
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .catalog-status {
+      color: var(--muted);
+      font-size: .82rem;
+      font-weight: 800;
+      margin: 2px 2px 10px;
+    }
+
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .catalog-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.96);
+      overflow: hidden;
+      box-shadow: 0 10px 24px rgba(78,52,46,.08);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .catalog-image {
+      width: 100%;
+      aspect-ratio: 1.35;
+      object-fit: cover;
+      background: linear-gradient(135deg, #ffe7bd, #fff6e6);
+    }
+
+    .catalog-placeholder {
+      width: 100%;
+      aspect-ratio: 1.35;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #ffe7bd, #fff6e6);
+      font-size: 38px;
+    }
+
+    .catalog-body {
+      padding: 11px;
+      display: grid;
+      gap: 7px;
+      flex: 1;
+    }
+
+    .catalog-tag {
+      color: var(--red);
+      font-size: .67rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    .catalog-card h3 {
+      font-size: .98rem;
+      line-height: 1.2;
+      min-height: 2.35em;
+    }
+
+    .catalog-price {
+      color: var(--green);
+      font-weight: 1000;
+      font-size: 1rem;
+    }
+
+    .catalog-card button {
+      margin-top: auto;
+      min-height: 42px;
+      border: 0;
+      border-radius: 13px;
+      color: white;
+      background: var(--red);
+      font-weight: 900;
+    }
+
+    .empty {
+      grid-column: 1 / -1;
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed rgba(78,52,46,.18);
+      border-radius: 22px;
+      background: rgba(255,255,255,.76);
+    }
+
+    .cart-bar {
+      position: fixed;
+      left: 50%;
+      bottom: calc(10px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 50;
+      width: min(calc(100% - 20px), 740px);
+      min-height: 66px;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 22px;
+      color: white;
+      background: linear-gradient(135deg, var(--green), #1b5e20);
+      box-shadow: 0 16px 34px rgba(27,94,32,.28);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-weight: 900;
+    }
+
+    .cart-bar:disabled {
+      opacity: .62;
+    }
+
+    .cart-bar span {
+      text-align: left;
+    }
+
+    .cart-bar strong {
+      display: block;
+      font-size: 1.05rem;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(44,28,23,.48);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .sheet {
+      width: min(100%, 760px);
+      max-height: min(88vh, 820px);
+      overflow: auto;
+      border-radius: 28px 28px 0 0;
+      background: var(--paper);
+      padding: 14px 14px calc(20px + env(safe-area-inset-bottom));
+      box-shadow: 0 -18px 50px rgba(44,28,23,.25);
+      animation: sheetIn .2s ease-out;
+    }
+
+    @keyframes sheetIn {
+      from { transform: translateY(24px); opacity: .6; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .sheet-handle {
+      width: 48px;
+      height: 5px;
+      margin: 0 auto 13px;
+      border-radius: 99px;
+      background: rgba(78,52,46,.2);
+    }
+
+    .sheet-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .sheet-close {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 14px;
+      background: #f3e8df;
+      color: var(--brown);
+      font-size: 20px;
+    }
+
+    .option-list {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .option-button {
+      min-height: 54px;
+      border: 1px solid rgba(78,52,46,.12);
+      border-radius: 16px;
+      padding: 10px 12px;
+      background: white;
+      color: var(--brown);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      text-align: left;
+      font-weight: 900;
+    }
+
+    .option-button.active {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(46,125,50,.12);
+      background: #f2fbf2;
+    }
+
+    .stepper {
+      display: grid;
+      grid-template-columns: 52px 1fr 52px;
+      gap: 8px;
+      margin: 12px 0;
+      align-items: center;
+    }
+
+    .stepper button {
+      min-height: 50px;
+      border: 0;
+      border-radius: 15px;
+      background: #f4e9df;
+      color: var(--brown);
+      font-size: 1.3rem;
+      font-weight: 1000;
+    }
+
+    .stepper strong {
+      text-align: center;
+      font-size: 1.2rem;
+    }
+
+    .cart-items {
+      display: grid;
+      gap: 10px;
+    }
+
+    .cart-item {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 12px;
+      display: grid;
+      gap: 9px;
+    }
+
+    .cart-item-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .cart-item-price {
+      color: var(--green);
+      font-weight: 1000;
+      white-space: nowrap;
+    }
+
+    .cart-item-actions {
+      display: grid;
+      grid-template-columns: 42px 42px 42px 1fr;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .cart-item-actions button {
+      min-height: 42px;
+      border: 0;
+      border-radius: 13px;
+      background: #f4e9df;
+      color: var(--brown);
+      font-weight: 1000;
+    }
+
+    .remove-btn {
+      justify-self: end;
+      color: #a73319 !important;
+      background: #fff0eb !important;
+      padding: 0 12px;
+    }
+
+    .cart-note {
+      min-height: 44px;
+      resize: vertical;
+    }
+
+    .cart-total {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 18px;
+      background: #edf8ee;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 1.08rem;
+      font-weight: 1000;
+    }
+
+    .sheet-actions {
+      display: grid;
+      grid-template-columns: 1fr 1.3fr;
+      gap: 8px;
+    }
+
+    .success-card {
+      width: min(calc(100% - 28px), 390px);
+      margin: auto;
+      border-radius: 28px;
+      padding: 24px;
+      background: white;
+      text-align: center;
+      display: grid;
+      gap: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .success-icon {
+      font-size: 52px;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(92px + env(safe-area-inset-bottom));
+      transform: translate(-50%, 18px);
+      z-index: 120;
+      width: min(calc(100% - 28px), 420px);
+      padding: 12px 16px;
+      border-radius: 16px;
+      background: rgba(78,52,46,.96);
+      color: white;
+      text-align: center;
+      font-weight: 900;
+      opacity: 0;
+      pointer-events: none;
+      transition: .2s ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    @media (min-width: 620px) {
+      .catalog-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 360px) {
+      .catalog-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .header-title small {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="login-screen" id="loginScreen">
+    <form class="login-card" id="loginForm">
+      <div class="brand">
+        <span class="brand-mark">🌮</span>
+        <div>
+          <h1>Acceso de meseros</h1>
+          <p class="muted">Toma órdenes de forma rápida desde tu teléfono.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="waiterUserInput">Usuario</label>
+        <input id="waiterUserInput" autocomplete="username" inputmode="text" required />
+      </div>
+
+      <div class="field">
+        <label for="waiterPinInput">PIN</label>
+        <input id="waiterPinInput" type="password" autocomplete="current-password" inputmode="numeric" pattern="[0-9]*" required />
+      </div>
+
+      <button class="primary" type="submit">Entrar</button>
+      <p class="error" id="loginError" aria-live="polite"></p>
+      <a class="ghost" href="../index.html" style="text-align:center;text-decoration:none;">Volver al sitio</a>
+    </form>
+  </section>
+
+  <div class="hidden" id="waiterApp">
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="header-title">
+          <span class="brand-mark">🌮</span>
+          <div>
+            <strong>Nueva orden</strong>
+            <small id="waiterNameLabel">Meseros · Los Anafres</small>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <button class="hidden" id="installAppBtn" type="button" aria-label="Instalar aplicación">📲</button>
+          <button id="logoutWaiterBtn" type="button" aria-label="Cerrar sesión">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="order-type" aria-label="Tipo de orden">
+        <button class="active" data-delivery-type="Comer aquí" type="button">🍽️ Comer aquí</button>
+        <button data-delivery-type="Para llevar" type="button">🥡 Para llevar</button>
+      </section>
+
+      <div class="search-wrap">
+        <input class="search-input" id="catalogSearchInput" type="search" placeholder="Buscar producto o promoción" autocomplete="off" />
+      </div>
+
+      <nav class="categories" id="categoryList" aria-label="Categorías"></nav>
+      <p class="catalog-status" id="catalogStatus">Cargando catálogo...</p>
+      <section class="catalog-grid" id="catalogGrid"></section>
+    </main>
+
+    <button class="cart-bar" id="openCartBtn" type="button" disabled>
+      <span>
+        <small id="cartCountLabel">0 artículos</small>
+        <strong id="cartTotalLabel">$0</strong>
+      </span>
+      <span>Ver orden →</span>
+    </button>
+  </div>
+
+  <div class="overlay hidden" id="itemOverlay" aria-hidden="true">
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="itemSheetTitle">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div>
+          <h2 id="itemSheetTitle">Producto</h2>
+          <p class="muted" id="itemSheetDescription"></p>
+        </div>
+        <button class="sheet-close" id="closeItemSheetBtn" type="button" aria-label="Cerrar">×</button>
+      </div>
+
+      <div class="option-list" id="itemOptionList"></div>
+
+      <div class="field hidden" id="choiceField">
+        <label for="itemChoiceSelect">Elige una opción</label>
+        <select id="itemChoiceSelect"></select>
+      </div>
+
+      <div class="stepper">
+        <button id="itemQtyMinusBtn" type="button">−</button>
+        <strong id="itemQtyLabel">1</strong>
+        <button id="itemQtyPlusBtn" type="button">+</button>
+      </div>
+
+      <button class="primary" id="addSelectedItemBtn" type="button" style="width:100%;">Agregar a la orden</button>
+    </section>
+  </div>
+
+  <div class="overlay hidden" id="cartOverlay" aria-hidden="true">
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="cartSheetTitle">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div>
+          <h2 id="cartSheetTitle">Orden actual</h2>
+          <p class="muted" id="cartDeliveryLabel">Comer aquí</p>
+        </div>
+        <button class="sheet-close" id="closeCartBtn" type="button" aria-label="Cerrar">×</button>
+      </div>
+
+      <div class="cart-items" id="cartItems"></div>
+      <div class="cart-total">
+        <span>Total</span>
+        <strong id="cartSheetTotal">$0</strong>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="ghost" id="clearCartBtn" type="button">Vaciar</button>
+        <button class="secondary" id="sendOrderBtn" type="button">Enviar orden</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay hidden" id="confirmOverlay" aria-hidden="true">
+    <section class="success-card" role="dialog" aria-modal="true">
+      <div class="success-icon">🧾</div>
+      <h2>Confirmar orden</h2>
+      <p class="muted" id="confirmSummary"></p>
+      <div class="sheet-actions">
+        <button class="ghost" id="cancelConfirmBtn" type="button">Regresar</button>
+        <button class="secondary" id="confirmSendBtn" type="button">Confirmar y enviar</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay hidden" id="successOverlay" aria-hidden="true">
+    <section class="success-card" role="dialog" aria-modal="true">
+      <div class="success-icon">✅</div>
+      <h2 id="successTitle">Orden enviada</h2>
+      <p class="muted" id="successText">La orden ya apareció en el Dashboard.</p>
+      <button class="primary" id="newOrderBtn" type="button">Tomar otra orden</button>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" aria-live="polite"></div>
+  <script src="./meseros.js?v=1"></script>
+</body>
+</html>
