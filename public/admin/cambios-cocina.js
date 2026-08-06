@@ -1,3 +1,4 @@
+// DELIVERED_PRODUCTS_NORMAL_STATUS_CHIP_V3
 // KITCHEN_PRODUCT_CHANGE_MARKERS_V1
 (function () {
   'use strict';
@@ -338,6 +339,52 @@
 
     if (!productCell || !summary) return;
 
+    const visibleStatus =
+      String(
+        row.dataset.orderStatus ||
+        row
+          .querySelector('.status-chip')
+          ?.textContent ||
+        ''
+      )
+        .trim()
+        .toLowerCase();
+
+    if (visibleStatus === 'entregado') {
+      const products =
+        Array.isArray(summary.currentProducts)
+          ? summary.currentProducts
+          : [];
+
+      productCell.innerHTML = `
+        <div class="admin-order-products">
+          ${products
+            .map(item => {
+              const instruction =
+                String(item?.instruction || '').trim();
+
+              return `
+                <span>
+                  ${quantity(item?.qty || 1)}x
+                  ${escapeHtml(item?.name || 'Producto')}
+                  ${instruction
+                    ? ` · ${escapeHtml(instruction)}`
+                    : ''}
+                </span>
+              `;
+            })
+            .join('')}
+        </div>
+      `;
+
+      row.classList.remove(
+        'kitchen-row-pending',
+        'kitchen-row-attended'
+      );
+
+      return;
+    }
+
     const isArchived =
       row.dataset.orderArchived === 'true';
 
@@ -373,10 +420,33 @@
 
   function visibleOrderIds() {
     return Array.from(
-      tableBody.querySelectorAll('tr[data-order-id]')
+      tableBody.querySelectorAll(
+        'tr[data-order-id]'
+      )
     )
-      .map(row => Number(row.dataset.orderId || 0))
-      .filter(id => Number.isInteger(id) && id > 0);
+      .filter(row => {
+        const visibleStatus =
+          String(
+            row.dataset.orderStatus ||
+            row
+              .querySelector('.status-chip')
+              ?.textContent ||
+            ''
+          )
+            .trim()
+            .toLowerCase();
+
+        return visibleStatus !== 'entregado';
+      })
+      .map(
+        row =>
+          Number(row.dataset.orderId || 0)
+      )
+      .filter(
+        id =>
+          Number.isInteger(id) &&
+          id > 0
+      );
   }
 
   async function refreshKitchenChanges() {
@@ -496,11 +566,38 @@
   function appendKitchenDetail(orderId) {
     if (!detailContent) return;
 
-    const summary = summaries.get(String(orderId));
-
     detailContent
       .querySelector('.kitchen-detail-section')
       ?.remove();
+
+    const row =
+      Array.from(
+        tableBody.querySelectorAll(
+          'tr[data-order-id]'
+        )
+      ).find(
+        item =>
+          Number(item.dataset.orderId || 0) ===
+          Number(orderId)
+      );
+
+    const visibleStatus =
+      String(
+        row?.dataset?.orderStatus ||
+        row
+          ?.querySelector('.status-chip')
+          ?.textContent ||
+        ''
+      )
+        .trim()
+        .toLowerCase();
+
+    if (visibleStatus === 'entregado') {
+      return;
+    }
+
+    const summary =
+      summaries.get(String(orderId));
 
     if (!summary) return;
 
