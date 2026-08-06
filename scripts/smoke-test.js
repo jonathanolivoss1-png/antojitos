@@ -14,6 +14,8 @@ const files = [
   'public/admin/historial-pedidos.js',
   'public/meseros/meseros.js',
   'routes/correcciones-personal.js',
+  'routes/cambios-cocina.js',
+  'public/admin/cambios-cocina.js',
 ].filter(file => fs.existsSync(file));
 
 let failed = false;

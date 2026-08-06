@@ -1,3 +1,4 @@
+// KITCHEN_PRODUCT_CHANGE_MARKERS_V1
 // BUSINESS_PROTECTION_V1
 'use strict';
 
@@ -21,10 +22,15 @@ const BACKUP_TABLES = [
   'pedidos_archivados',
   'calculadora_calculos',
   'calculadora_productos',
-  'pedidos_correcciones'
+  'pedidos_correcciones',
+  'pedidos_cocina_estado',
 ];
+const OPTIONAL_BACKUP_TABLES = new Set([
+  'pedidos_cocina_estado'
+]);
 
 const DELETE_ORDER = [
+  'pedidos_cocina_estado',
   'pedidos_correcciones',
   'calculadora_productos',
   'calculadora_calculos',
@@ -43,7 +49,8 @@ const INSERT_ORDER = [
   'pedidos_archivados',
   'calculadora_calculos',
   'calculadora_productos',
-  'pedidos_correcciones'
+  'pedidos_correcciones',
+  'pedidos_cocina_estado',
 ];
 
 function sanitizeText(value, maxLength = 240) {
@@ -1021,8 +1028,15 @@ function validateBackup(backup) {
     throw new Error('El respaldo no contiene datos');
   }
 
+  const optionalMissingTables = [];
+
   for (const tableName of BACKUP_TABLES) {
     if (!Array.isArray(backup.data[tableName])) {
+      if (OPTIONAL_BACKUP_TABLES.has(tableName)) {
+        optionalMissingTables.push(tableName);
+        continue;
+      }
+
       throw new Error(`Falta la tabla ${tableName} en el respaldo`);
     }
   }
@@ -1035,6 +1049,10 @@ function validateBackup(backup) {
     throw new Error(
       'La verificación de integridad falló; el archivo pudo modificarse o dañarse'
     );
+  }
+
+  for (const tableName of optionalMissingTables) {
+    backup.data[tableName] = [];
   }
 
   return {
